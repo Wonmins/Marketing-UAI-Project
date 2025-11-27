@@ -1,0 +1,1869 @@
+---
+title: "OpenStreetMap Integration: Actual Enrollment Analysis"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    toc-location: left
+    theme: cosmo
+    code-fold: true
+lang: en
+---
+
+<style>
+/* Fix z-index issue for DataTables filter dropdowns */
+.dataTables_wrapper .dataTables_filter input,
+.dataTables_wrapper .dataTables_length select,
+div.dataTables_wrapper div.dataTables_filter input,
+div.dataTables_wrapper div.dataTables_length select {
+  z-index: 1000 !important;
+  position: relative;
+}
+
+/* Fix for filter dropdowns appearing behind table */
+thead input,
+thead select {
+  z-index: 1000 !important;
+  position: relative;
+}
+
+/* Ensure dropdown menus appear on top */
+.dataTables_scrollHead {
+  z-index: 999 !important;
+}
+
+.dataTables_scrollBody {
+  z-index: 1 !important;
+}
+
+/* Fix for select2 dropdowns if used */
+.select2-container {
+  z-index: 10000 !important;
+}
+
+.select2-dropdown {
+  z-index: 10001 !important;
+}
+
+/* General fix for filter row */
+.dataTables_scrollHeadInner table thead tr:first-child {
+  z-index: 1000 !important;
+  position: relative;
+}
+
+/* Ensure filter inputs are clickable and visible */
+table.dataTable thead .sorting:before,
+table.dataTable thead .sorting_asc:before,
+table.dataTable thead .sorting_desc:before {
+  z-index: 1 !important;
+}
+
+/* Fix for the filter input cells */
+table.dataTable thead tr:first-child th {
+  z-index: 1000 !important;
+  position: relative;
+  background: white;
+}
+
+/* Ensure the filter inputs have proper stacking */
+table.dataTable thead input[type="search"] {
+  z-index: 1001 !important;
+  position: relative;
+  background: white;
+}
+
+/* Force white text for TOTAL row in contingency table */
+table.kable-table tbody tr:last-child td {
+  color: white !important;
+  background-color: #2c3e50 !important;
+  font-weight: bold !important;
+}
+
+</style>
+
+### OpenStreetMap Integration for Competitive Analysis - Actual Enrollment Data
+
+This document focuses specifically on OpenStreetMap integration and advanced web mapping techniques for UAI's competitive analysis using actual enrollment data (MATRICULADOS, EGRESADOS) without filtered career restrictions.
+
+**OpenStreetMap Features:**
+- 🗺️ **Custom OpenStreetMap Tiles** with multiple providers
+- 🌐 **Advanced Leaflet Integration** with custom controls
+- 📊 **Real-time Data Overlays** on OpenStreetMap base layers
+- 🎯 **Professional Web Mapping** with responsive design
+- 📱 **Mobile-optimized Maps** with touch interactions
+
+```{r setup, include=FALSE, message=FALSE, warning=FALSE}
+# Load specialized mapping libraries
+library(tidyverse)
+library(leaflet)
+library(leaflet.extras)
+library(leaflet.providers)
+library(DT)
+library(reactable)
+
+# Using standard leaflet.extras search functionality
+library(RColorBrewer)
+library(readr)
+library(plotly)
+library(classInt)
+library(viridis)
+library(htmlwidgets)
+library(cluster)
+library(factoextra)
+library(kableExtra)
+# library(webshot)  # Optional package
+
+# Options for dynamic tables
+options(DT.options = list(pageLength = 10, language = list(url = '//cdn.datatables.net/plug-ins/1.10.19/i18n/English.json')))
+```
+
+### 1. Data Preparation for OpenStreetMap Integration
+
+```{r OSM_Data_Preparation, message=FALSE, warning=FALSE}
+# Load and prepare data for OpenStreetMap integration
+# Now using the new comprehensive CSV with both career and university clusters
+# Note: File has mixed decimal separators - most columns use comma, coordinates use period
+datos_raw <- read_delim("Resumen_colegios_clusters.csv", 
+                        delim = ";",
+                        col_types = cols(.default = "c"))  # Read everything as character first
+
+# Convert columns properly with correct decimal separators
+datos <- datos_raw %>%
+  mutate(
+    # Coordinates use PERIOD as decimal separator
+    LATITUD = as.numeric(LATITUD),
+    LONGITUD = as.numeric(LONGITUD),
+    
+    # Convert specific numeric columns with COMMA as decimal separator
+    RBD = as.numeric(RBD),
+    REGION_RBD = as.numeric(REGION_RBD),
+    MATRICULADOS = as.numeric(gsub(",", ".", MATRICULADOS)),
+    POSTULANTES = as.numeric(gsub(",", ".", POSTULANTES)),
+    POSTULANTES_UAI = as.numeric(gsub(",", ".", POSTULANTES_UAI)),
+    MATRICULADOS_UAI = as.numeric(gsub(",", ".", MATRICULADOS_UAI)),
+    POST_COMPETENCIA1 = as.numeric(gsub(",", ".", POST_COMPETENCIA1)),
+    POST_COMPETENCIA2 = as.numeric(gsub(",", ".", POST_COMPETENCIA2)),
+    MATRI_COMPETENCIA1 = as.numeric(gsub(",", ".", MATRI_COMPETENCIA1)),
+    MATRI_COMPETENCIA2 = as.numeric(gsub(",", ".", MATRI_COMPETENCIA2)),
+    # Others category (unfiltered)
+    MATRI_OTHERS = as.numeric(gsub(",", ".", MATRI_OTHERS)),
+    POST_OTHERS = as.numeric(gsub(",", ".", POST_OTHERS)),
+    # Filtered career data
+    MATRI_UAI_FILTRADO = as.numeric(gsub(",", ".", MATRI_UAI_FILTRADO)),
+    POST_UAI_FILTRADO = as.numeric(gsub(",", ".", POST_UAI_FILTRADO)),
+    MATRI_COMPT1_FILTRADO = as.numeric(gsub(",", ".", MATRI_COMPT1_FILTRADO)),
+    POST_COMPT1_FILTRADO = as.numeric(gsub(",", ".", POST_COMPT1_FILTRADO)),
+    MATRI_COMPT2_FILTRADO = as.numeric(gsub(",", ".", MATRI_COMPT2_FILTRADO)),
+    POST_COMPT2_FILTRADO = as.numeric(gsub(",", ".", POST_COMPT2_FILTRADO)),
+    PTJE_PROM = as.numeric(gsub(",", ".", PTJE_PROM)),
+    cluster_num = as.numeric(cluster_num),
+    CLUSTER_UNIVERSIDAD_NUM = as.numeric(CLUSTER_UNIVERSIDAD_NUM)
+  )
+
+# Prepare data with OpenStreetMap-optimized structure - Using only actual enrollment data
+datos_osm <- datos %>%
+  mutate(
+    # Ensure numeric conversion for actual enrollment data
+    POSTULANTES_UAI = as.numeric(POSTULANTES_UAI),
+    MATRICULADOS_UAI = as.numeric(MATRICULADOS_UAI),
+    MATRI_COMPETENCIA_1 = as.numeric(MATRI_COMPETENCIA1),
+    MATRI_COMPETENCIA_2 = as.numeric(MATRI_COMPETENCIA2),
+    POSTULANTES_COMPETENCIA_1 = as.numeric(POST_COMPETENCIA1),
+    POSTULANTES_COMPETENCIA_2 = as.numeric(POST_COMPETENCIA2),
+    PTJE_PROM = as.numeric(PTJE_PROM),
+    
+    # Use actual enrollment data (no filtered careers)
+    POST_UAI_ACTUAL = as.numeric(POSTULANTES_UAI),
+    MATRI_UAI_ACTUAL = as.numeric(MATRICULADOS_UAI),
+    POST_COMP1_ACTUAL = as.numeric(POST_COMPETENCIA1),
+    POST_COMP2_ACTUAL = as.numeric(POST_COMPETENCIA2),
+    MATRI_COMP1_ACTUAL = as.numeric(MATRI_COMPETENCIA1),
+    MATRI_COMP2_ACTUAL = as.numeric(MATRI_COMPETENCIA2),
+    POST_OTHERS_ACTUAL = as.numeric(POST_OTHERS),
+    MATRI_OTHERS_ACTUAL = as.numeric(MATRI_OTHERS),
+    
+    # Competitive metrics - Using ACTUAL ENROLLMENT data (including Others)
+    TOTAL_MARKET_MATRI = MATRICULADOS_UAI + MATRI_COMPETENCIA1 + MATRI_COMPETENCIA2 + MATRI_OTHERS,
+    
+    # Market Share Analysis - Using actual enrollment data (including Others)
+    MARKET_SHARE_UAI_MATRI = if_else(TOTAL_MARKET_MATRI > 0, (MATRICULADOS_UAI / TOTAL_MARKET_MATRI) * 100, 0),
+    MARKET_SHARE_COMP1_MATRI = if_else(TOTAL_MARKET_MATRI > 0, (MATRI_COMPETENCIA1 / TOTAL_MARKET_MATRI) * 100, 0),
+    MARKET_SHARE_COMP2_MATRI = if_else(TOTAL_MARKET_MATRI > 0, (MATRI_COMPETENCIA2 / TOTAL_MARKET_MATRI) * 100, 0),
+    MARKET_SHARE_OTHERS_MATRI = if_else(TOTAL_MARKET_MATRI > 0, (MATRI_OTHERS / TOTAL_MARKET_MATRI) * 100, 0),
+    
+    # Inverse Lift Logic: UAI as numerator (bigger is better) - Using actual data
+    LIFT_UAI_vs_COMP1 = if_else(MATRI_COMPETENCIA1 > 0, MATRICULADOS_UAI / MATRI_COMPETENCIA1, 0),
+    LIFT_UAI_vs_COMP2 = if_else(MATRI_COMPETENCIA2 > 0, MATRICULADOS_UAI / MATRI_COMPETENCIA2, 0),
+    
+    # Combined competitive position
+    COMPETITIVE_POSITION = case_when(
+      LIFT_UAI_vs_COMP1 >= 2 & LIFT_UAI_vs_COMP2 >= 2 ~ "UAI Dominant",
+      LIFT_UAI_vs_COMP1 >= 1.5 | LIFT_UAI_vs_COMP2 >= 1.5 ~ "UAI Strong",
+      LIFT_UAI_vs_COMP1 >= 1 | LIFT_UAI_vs_COMP2 >= 1 ~ "UAI Advantage",
+      LIFT_UAI_vs_COMP1 >= 0.7 & LIFT_UAI_vs_COMP2 >= 0.7 ~ "Balanced",
+      LIFT_UAI_vs_COMP1 >= 0.5 | LIFT_UAI_vs_COMP2 >= 0.5 ~ "Competitor Advantage",
+      TRUE ~ "Competitor Dominant"
+    )
+  ) %>%
+  # Rename for consistency - keep both career and university cluster info
+  rename(CLUSTER_ID = "cluster_num") %>%
+  # Map CLUSTER_CARRERA to CLUSTER_NOMBRE for backward compatibility with existing code
+  mutate(CLUSTER_NOMBRE = CLUSTER_CARRERA) %>%
+  # Use CLUSTER_UNIVERSIDAD directly instead of calculated COMPETITIVE_POSITION
+  mutate(COMPETITIVE_CATEGORY = ifelse(is.na(CLUSTER_UNIVERSIDAD) | CLUSTER_UNIVERSIDAD == "", "No Cluster", CLUSTER_UNIVERSIDAD))
+
+# Filter schools for OpenStreetMap visualization - Using actual enrollment data
+# Keep all schools with valid cluster assignments (career clusters 1-6)
+datos_osm <- datos_osm %>%
+  filter(!is.na(CLUSTER_ID) & CLUSTER_ID %in% 1:6)
+  # NOTE: CLUSTER_CARRERA already exists in the data with meaningful names!
+  # CLUSTER_UNIVERSIDAD contains university cluster assignments (1-8)
+
+# Filter for OpenStreetMap visualization - Using actual enrollment data
+datos_osm_clean <- datos_osm %>%
+  filter(POST_UAI_ACTUAL > 0 | MATRI_UAI_ACTUAL > 0 | 
+         POST_COMP1_ACTUAL > 0 | MATRI_COMP1_ACTUAL > 0 |
+         POST_COMP2_ACTUAL > 0 | MATRI_COMP2_ACTUAL > 0 |
+         POST_OTHERS_ACTUAL > 0 | MATRI_OTHERS_ACTUAL > 0) %>%
+  filter(!is.na(LATITUD) & !is.na(LONGITUD) & 
+         LATITUD != "" & LONGITUD != "" &
+         LATITUD != "NA" & LONGITUD != "NA") %>%
+  mutate(
+    LATITUD = as.numeric(LATITUD),
+    LONGITUD = as.numeric(LONGITUD)
+  ) %>%
+  filter(!is.na(LATITUD) & !is.na(LONGITUD) &
+         LATITUD >= -56 & LATITUD <= -17 &  # Chile bounds
+         LONGITUD >= -76 & LONGITUD <= -66) %>%
+  mutate(
+    # Use CLUSTER_UNIVERSIDAD directly instead of calculated COMPETITIVE_POSITION
+    COMPETITIVE_CATEGORY = ifelse(is.na(CLUSTER_UNIVERSIDAD) | CLUSTER_UNIVERSIDAD == "", "No Cluster", CLUSTER_UNIVERSIDAD),
+    
+    # Market dominance indicators
+    UAI_MARKET_DOMINANCE = case_when(
+      MARKET_SHARE_UAI_MATRI >= 50 ~ "Market Leader",
+      MARKET_SHARE_UAI_MATRI >= 30 ~ "Strong Position",
+      MARKET_SHARE_UAI_MATRI >= 15 ~ "Moderate Position",
+      MARKET_SHARE_UAI_MATRI >= 5 ~ "Weak Position",
+      TRUE ~ "Minimal Presence"
+    )
+  )
+
+cat("OpenStreetmap dataset prepared with", nrow(datos_osm_clean), "schools\n")
+```
+
+
+### University Cluster Centers Analysis (6 Final Clusters)
+
+```{r University_Cluster_Centers, message=FALSE, warning=FALSE, echo=FALSE}
+# Calculate university cluster centers using FILTERED data (normalized percentages)
+university_cluster_centers <- datos_osm_clean %>%
+  filter(!is.na(CLUSTER_UNIVERSIDAD) & CLUSTER_UNIVERSIDAD != "") %>%
+  mutate(
+    # Use FILTERED percentages and normalize them
+    UAI_FILT = coalesce(as.numeric(gsub(",", ".", gsub("%", "", PCNTJE_MATRI_UAI_FILTRADO))), 0),
+    COMP1_FILT = coalesce(as.numeric(gsub(",", ".", gsub("%", "", PCNTJE_COMPT1_MATRI_FILTRADO))), 0),
+    COMP2_FILT = coalesce(as.numeric(gsub(",", ".", gsub("%", "", PCNTJE_COMPT2_MATRI_FILTRADO))), 0),
+    OTHERS_FILT = pmax(0, 100 - UAI_FILT - COMP1_FILT - COMP2_FILT),
+    SUMA_FILT = UAI_FILT + COMP1_FILT + COMP2_FILT + OTHERS_FILT
+  ) %>%
+  filter(SUMA_FILT > 0) %>%
+  mutate(
+    # Normalize to 100%
+    UAI_NORM = (UAI_FILT / SUMA_FILT) * 100,
+    COMP1_NORM = (COMP1_FILT / SUMA_FILT) * 100,
+    COMP2_NORM = (COMP2_FILT / SUMA_FILT) * 100,
+    OTHERS_NORM = (OTHERS_FILT / SUMA_FILT) * 100
+  ) %>%
+  group_by(CLUSTER_UNIVERSIDAD) %>%
+  summarise(
+    n_schools = n(),
+    avg_uai_pct = round(mean(UAI_NORM, na.rm = TRUE), 2),
+    avg_comp1_pct = round(mean(COMP1_NORM, na.rm = TRUE), 2),
+    avg_comp2_pct = round(mean(COMP2_NORM, na.rm = TRUE), 2),
+    avg_others_pct = round(mean(OTHERS_NORM, na.rm = TRUE), 2),
+    suma_check = round(avg_uai_pct + avg_comp1_pct + avg_comp2_pct + avg_others_pct, 2),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(n_schools))
+
+cat("#### University Cluster Distribution\n\n")
+university_distribution <- university_cluster_centers %>%
+  select(CLUSTER_UNIVERSIDAD, n_schools) %>%
+  mutate(percentage = round((n_schools / sum(n_schools)) * 100, 1)) %>%
+  arrange(desc(n_schools))
+
+university_distribution %>%
+  kableExtra::kbl(
+    col.names = c("University Cluster", "Number of Schools", "Percentage"),
+    align = c("l", "r", "r"),
+    format = "html",
+    escape = FALSE
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE,
+    position = "left",
+    font_size = 12
+  ) %>%
+  row_spec(0, background = "#2c3e50", color = "white", bold = TRUE) %>%
+  column_spec(1, bold = TRUE, color = "#2c3e50") %>%
+  column_spec(2:3, color = "#34495e") %>%
+  add_header_above(c(" " = 1, "Distribution" = 2), background = "#34495e", color = "white", bold = TRUE)
+
+cat("\n#### University Cluster Centers (Normalized Percentages - Filtered Data)\n\n")
+cat("**Note:** Percentages are normalized so UAI + COMP1 + COMP2 + OTHERS = 100%\\n")
+cat("This shows the relative preference within these 4 categories using FILTERED matriculation data.\\n\\n")
+
+university_cluster_centers %>%
+  kableExtra::kbl(
+    col.names = c("University Cluster", "Schools", "UAI %", "COMP1 %", "COMP2 %", "OTHERS %", "Sum Check"),
+    align = c("l", "r", "r", "r", "r", "r", "r"),
+    format = "html",
+    escape = FALSE,
+    digits = 2
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE,
+    position = "left",
+    font_size = 11
+  ) %>%
+  row_spec(0, background = "#34495e", color = "white", bold = TRUE) %>%
+  column_spec(1, bold = TRUE, color = "#2c3e50") %>%
+  column_spec(2, color = "#27ae60", bold = TRUE) %>%
+  column_spec(3, color = "#3498db") %>%
+  column_spec(4, color = "#e67e22") %>%
+  column_spec(5, color = "#9b59b6") %>%
+  column_spec(6, color = "#95a5a6") %>%
+  column_spec(7, color = "#e74c3c", bold = TRUE) %>%
+  add_header_above(c(" " = 1, "Schools" = 1, "Normalized Percentages" = 4, "Validation" = 1), 
+                   background = "#2c3e50", color = "white", bold = TRUE)
+```
+
+### Career Cluster Analysis Summary
+
+```{r Cluster_Statistics_Summary, message=FALSE, warning=FALSE, echo=FALSE}
+# Calculate cluster statistics using MATRICULATION data (same as used for clustering)
+cluster_stats <- datos_osm_clean %>%
+  filter(!is.na(CLUSTER_NOMBRE) & CLUSTER_NOMBRE != "") %>%
+  mutate(
+    # Convert percentages to numeric - USE MATRICULATION DATA (same as clustering)
+    COMERCIAL_RAW = coalesce(as.numeric(gsub(",", ".", gsub("%", "", PCNTJE_COMERCIAL_MATRI))), 0),
+    DERECHO_RAW = coalesce(as.numeric(gsub(",", ".", gsub("%", "", PCNTJE_DERECHO_MATRI))), 0),
+    CIVIL_RAW = coalesce(as.numeric(gsub(",", ".", gsub("%", "", PCNTJE_ING_CIVIL_MATRI))), 0),
+    PSICOLOGIA_RAW = coalesce(as.numeric(gsub(",", ".", gsub("%", "", PCNTJE_PSICOLOGIA_MATRI))), 0),
+    PERIODISMO_RAW = coalesce(as.numeric(gsub(",", ".", gsub("%", "", PCNTJE_PERIODISMO_MATRI))), 0),
+    # Calculate sum of strategic careers
+    SUMA_ESTRATEGICAS = COMERCIAL_RAW + DERECHO_RAW + CIVIL_RAW + PSICOLOGIA_RAW + PERIODISMO_RAW
+  ) %>%
+  # Only include schools with at least one strategic career
+  filter(SUMA_ESTRATEGICAS > 0) %>%
+  # Normalize to 100% (same as clustering process)
+  mutate(
+    COMERCIAL_NORM = (COMERCIAL_RAW / SUMA_ESTRATEGICAS) * 100,
+    DERECHO_NORM = (DERECHO_RAW / SUMA_ESTRATEGICAS) * 100,
+    CIVIL_NORM = (CIVIL_RAW / SUMA_ESTRATEGICAS) * 100,
+    PSICOLOGIA_NORM = (PSICOLOGIA_RAW / SUMA_ESTRATEGICAS) * 100,
+    PERIODISMO_NORM = (PERIODISMO_RAW / SUMA_ESTRATEGICAS) * 100
+  ) %>%
+  group_by(CLUSTER_NOMBRE) %>%
+  summarise(
+    n_schools = n(),
+    # Average normalized percentages (sum to 100% per cluster)
+    avg_commercial = round(mean(COMERCIAL_NORM, na.rm = TRUE), 2),
+    avg_civil = round(mean(CIVIL_NORM, na.rm = TRUE), 2),
+    avg_law = round(mean(DERECHO_NORM, na.rm = TRUE), 2),
+    avg_psychology = round(mean(PSICOLOGIA_NORM, na.rm = TRUE), 2),
+    avg_journalism = round(mean(PERIODISMO_NORM, na.rm = TRUE), 2),
+    # Check that they sum to 100%
+    suma_check = round(avg_commercial + avg_civil + avg_law + avg_psychology + avg_journalism, 2),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(n_schools))
+
+# Create distribution summary
+cluster_distribution <- datos_osm_clean %>%
+  filter(!is.na(CLUSTER_NOMBRE) & CLUSTER_NOMBRE != "") %>%
+  count(CLUSTER_NOMBRE, name = "count") %>%
+  mutate(percentage = round((count / sum(count)) * 100, 1)) %>%
+  arrange(desc(count))
+
+cat("#### Cluster Distribution\n\n")
+cluster_distribution %>%
+  kableExtra::kbl(
+                   col.names = c("Cluster Name", "Number of Schools", "Percentage"),
+    align = c("l", "r", "r"),
+    format = "html",
+    escape = FALSE
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE,
+    position = "left",
+    font_size = 12
+  ) %>%
+  row_spec(0, background = "#2c3e50", color = "white", bold = TRUE) %>%
+  column_spec(1, bold = TRUE, color = "#2c3e50") %>%
+  column_spec(2:3, color = "#34495e") %>%
+  add_header_above(c(" " = 1, "Distribution" = 2), background = "#34495e", color = "white", bold = TRUE)
+
+cat("\n#### Cluster Characteristics (Normalized Percentages - Sum to 100%)\n\n")
+cat("Note: Percentages are normalized across the 5 strategic careers so they sum to 100%.\n")
+cat("This shows the relative preference within these careers (MATRICULATION data, same as used for clustering).\n\n")
+cluster_stats %>%
+  select(-suma_check) %>%
+  kableExtra::kbl(
+                   col.names = c("Cluster Name", "Schools", "Commercial %", "Civil %", "Law %", "Psychology %", "Journalism %"),
+                   align = c("l", "r", "r", "r", "r", "r", "r"),
+    format = "html",
+    escape = FALSE,
+    digits = 2
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE,
+    position = "left",
+    font_size = 11
+  ) %>%
+  row_spec(0, background = "#34495e", color = "white", bold = TRUE) %>%
+  column_spec(1, bold = TRUE, color = "#2c3e50") %>%
+  column_spec(2, color = "#27ae60", bold = TRUE) %>%
+  column_spec(3, color = "#9b59b6") %>%
+  column_spec(4, color = "#e74c3c") %>%
+  column_spec(5, color = "#f39c12") %>%
+  column_spec(6, color = "#1abc9c") %>%
+  column_spec(7, color = "#3498db") %>%
+  add_header_above(c(" " = 1, "Schools" = 1, "Career Distribution (Normalized %)" = 5), 
+                   background = "#2c3e50", color = "white", bold = TRUE)
+
+```
+
+### Contingency Table: University Cluster × Career Dominant
+
+```{r Contingency_Table, message=FALSE, warning=FALSE, echo=FALSE}
+# Create contingency table: Cluster Universidad × Carrera Dominante
+datos_con_carrera_dom <- datos_osm_clean %>%
+  filter(!is.na(CLUSTER_UNIVERSIDAD) & CLUSTER_UNIVERSIDAD != '' &
+         !is.na(CLUSTER_CARRERA) & CLUSTER_CARRERA != '' & CLUSTER_CARRERA != 'Other') %>%
+  mutate(
+    COMERCIAL = coalesce(as.numeric(gsub(',', '.', gsub('%', '', PCNTJE_COMERCIAL_MATRI))), 0),
+    ING_CIVIL = coalesce(as.numeric(gsub(',', '.', gsub('%', '', PCNTJE_ING_CIVIL_MATRI))), 0),
+    DERECHO = coalesce(as.numeric(gsub(',', '.', gsub('%', '', PCNTJE_DERECHO_MATRI))), 0),
+    PSICOLOGIA = coalesce(as.numeric(gsub(',', '.', gsub('%', '', PCNTJE_PSICOLOGIA_MATRI))), 0),
+    PERIODISMO = coalesce(as.numeric(gsub(',', '.', gsub('%', '', PCNTJE_PERIODISMO_MATRI))), 0),
+    MAX_PCT = pmax(COMERCIAL, ING_CIVIL, DERECHO, PSICOLOGIA, PERIODISMO),
+    CARRERA_DOMINANTE = case_when(
+      abs(MAX_PCT - COMERCIAL) < 0.01 ~ 'Comercial',
+      abs(MAX_PCT - ING_CIVIL) < 0.01 ~ 'Ing_Civil',
+      abs(MAX_PCT - DERECHO) < 0.01 ~ 'Derecho',
+      abs(MAX_PCT - PSICOLOGIA) < 0.01 ~ 'Psicologia',
+      abs(MAX_PCT - PERIODISMO) < 0.01 ~ 'Periodismo',
+      TRUE ~ 'Otra'
+    )
+  )
+
+# Count by combination
+conteos <- datos_con_carrera_dom %>%
+  count(CLUSTER_UNIVERSIDAD, CARRERA_DOMINANTE)
+
+# Convert to contingency table
+library(data.table)
+conteos_dt <- as.data.table(conteos)
+tabla_n <- dcast(conteos_dt, 
+                 CLUSTER_UNIVERSIDAD ~ CARRERA_DOMINANTE, 
+                 value.var = 'n', 
+                 fill = 0)
+
+# Calculate % of total global
+total_colegios <- sum(conteos$n)
+tabla_pct <- tabla_n %>%
+  mutate(across(-CLUSTER_UNIVERSIDAD, ~ round((.x / total_colegios) * 100, 2))) %>%
+  mutate(TOTAL_FILA = round(rowSums(select(., -CLUSTER_UNIVERSIDAD)), 2))
+
+# Add column totals
+totales_col <- tabla_pct %>%
+  summarise(across(-CLUSTER_UNIVERSIDAD, sum)) %>%
+  mutate(CLUSTER_UNIVERSIDAD = 'TOTAL')
+
+tabla_pct <- bind_rows(tabla_pct, totales_col)
+
+cat("#### Contingency Table: University Cluster × Career Dominant\n\n")
+cat("**Note:** Each cell shows the % of the TOTAL number of schools with that combination.\\n")
+cat("All cells together represent 100% of the school universe.\\n\\n")
+
+tabla_pct %>%
+  kableExtra::kbl(
+    col.names = c("University Cluster", "Comercial", "Derecho", "Ing_Civil", "Periodismo", "Psicologia", "TOTAL"),
+    align = c("l", "r", "r", "r", "r", "r", "r"),
+    format = "html",
+    escape = FALSE,
+    digits = 2
+  ) %>%
+  kable_styling(
+    bootstrap_options = c("striped", "hover", "condensed", "responsive"),
+    full_width = FALSE,
+    position = "left",
+    font_size = 11
+  ) %>%
+  row_spec(0, background = "#34495e", color = "white", bold = TRUE) %>%
+  column_spec(1, bold = TRUE, color = "#2c3e50") %>%
+  column_spec(2:6, color = "#34495e") %>%
+  column_spec(7, color = "#e74c3c", bold = TRUE) %>%
+  # Apply white text to TOTAL row - this must be last to override column colors
+  row_spec(which(tabla_pct$CLUSTER_UNIVERSIDAD == "TOTAL"), 
+           background = "#2c3e50", 
+           color = "white", 
+           bold = TRUE,
+           extra_css = "td, td:nth-child(1), td:nth-child(2), td:nth-child(3), td:nth-child(4), td:nth-child(5), td:nth-child(6), td:nth-child(7) { color: white !important; background-color: #2c3e50 !important; }") %>%
+  add_header_above(c("University Cluster" = 1, "Career Dominant (%)" = 5, "Total" = 1), 
+                   background = "#2c3e50", color = "white", bold = TRUE) %>%
+  footnote(
+    general = "Each cell shows the % of the TOTAL number of schools. All cells together represent 100% of the school universe.",
+    general_title = "Note:",
+    footnote_as_chunk = TRUE
+  )
+```
+
+### Helper Function: Add Slider Filters
+
+```{r Add_Filter_Controls, message=FALSE, warning=FALSE}
+# Function to add filter controls with sliders to any map
+add_filter_controls <- function(map) {
+  htmlwidgets::onRender(map, "
+    function(el, x) {
+      var map = this;
+      
+      // Store all markers for filtering (with their groups and layer groups)
+      var allMarkers = [];
+      var markerToLayerGroup = {}; // Track which LayerGroup each marker belongs to
+      
+      // Function to collect markers from all sources (map and layer groups)
+      function collectMarkers() {
+        allMarkers = [];
+        markerToLayerGroup = {};
+        
+        // Collect markers from the map directly
+        map.eachLayer(function(layer) {
+          if (layer instanceof L.CircleMarker && layer.options.popup) {
+            allMarkers.push(layer);
+            markerToLayerGroup[layer._leaflet_id] = null; // Directly on map
+          }
+        });
+        
+        // Also collect markers from all layer groups (even if not visible)
+        map.eachLayer(function(layer) {
+          if (layer instanceof L.LayerGroup) {
+            layer.eachLayer(function(subLayer) {
+              if (subLayer instanceof L.CircleMarker && subLayer.options.popup) {
+                // Check if we already have this marker
+                var alreadyFound = false;
+                for (var i = 0; i < allMarkers.length; i++) {
+                  if (allMarkers[i]._leaflet_id === subLayer._leaflet_id) {
+                    alreadyFound = true;
+                    // Update the layer group reference
+                    markerToLayerGroup[subLayer._leaflet_id] = layer;
+                    break;
+                  }
+                }
+                if (!alreadyFound) {
+                  allMarkers.push(subLayer);
+                  markerToLayerGroup[subLayer._leaflet_id] = layer;
+                }
+              }
+            });
+          }
+        });
+        map.eachLayer(function(layer) {
+          if (layer instanceof L.CircleMarker && layer.options.popup) {
+            allMarkers.push(layer);
+          }
+        });
+      }
+      
+      // Collect markers initially
+      collectMarkers();
+      
+      // Find max value for Total Students slider
+      var maxTotal = 0;
+      allMarkers.forEach(function(marker) {
+        var popupContent = marker.options.popup;
+        // Match Total Students with or without (5 Key Careers) prefix  
+        var totalMatch = popupContent.match(/Total Students[^:]*:<\\/strong>\\s*([0-9,]+)/);
+        
+        if (totalMatch) {
+          var totalVal = parseInt(totalMatch[1].toString().replace(/,/g, '')) || 0;
+          if (totalVal > maxTotal) maxTotal = totalVal;
+        }
+      });
+      
+      // Create custom control panel
+      var controlPanel = L.control({position: 'topright'});
+      
+      controlPanel.onAdd = function(map) {
+        var div = L.DomUtil.create('div', 'filter-control-panel');
+        div.style.cssText = 'background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); min-width: 280px; z-index: 1000;';
+        
+        // Title
+        var title = document.createElement('h4');
+        title.textContent = 'Total Students';
+        title.style.cssText = 'margin: 0 0 15px 0; font-size: 16px; color: #333;';
+        div.appendChild(title);
+        
+        // Total Students Filter
+        var totalLabel = document.createElement('label');
+        totalLabel.textContent = 'Total Students (min):';
+        totalLabel.style.cssText = 'display: block; margin-bottom: 5px; font-size: 12px; font-weight: bold; color: #555;';
+        div.appendChild(totalLabel);
+        
+        var totalSlider = document.createElement('input');
+        totalSlider.type = 'range';
+        totalSlider.min = '0';
+        totalSlider.max = String(Math.min(maxTotal, 500));
+        totalSlider.value = '0';
+        totalSlider.step = '10';
+        totalSlider.style.cssText = 'width: 100%; margin-bottom: 10px;';
+        div.appendChild(totalSlider);
+        
+        var totalValue = document.createElement('span');
+        totalValue.textContent = '0';
+        totalValue.style.cssText = 'display: block; text-align: center; font-size: 14px; font-weight: bold; color: #667eea; margin-bottom: 10px;';
+        div.appendChild(totalValue);
+        
+        // Update value displays
+        uaiSlider.addEventListener('input', function() {
+          uaiValue.textContent = this.value;
+        });
+        
+        totalSlider.addEventListener('input', function() {
+          totalValue.textContent = this.value;
+        });
+        
+        // Filter function
+        function filterMarkers() {
+          var uaiMin = parseInt(uaiSlider.value);
+          var totalMin = parseInt(totalSlider.value);
+          var visibleCount = 0;
+          
+          allMarkers.forEach(function(marker) {
+            // Extract data from popup HTML
+            var popupContent = marker.options.popup;
+            var uaiMatch = popupContent.match(/UAI.*?Enrolled.*?strong>Enrolled:<\\/strong>[^>]*>([^<]+)</);
+            var totalMatch = popupContent.match(/Total Students:<\\/strong>[^>]*>([^<]+)/);
+            
+            var uaiVal = uaiMatch ? parseInt(uaiMatch[1].replace(/,/g, '')) || 0 : 0;
+            var totalVal = totalMatch ? parseInt(totalMatch[1].replace(/,/g, '')) || 0 : 0;
+            
+            if (uaiVal >= uaiMin && totalVal >= totalMin) {
+              if (!map.hasLayer(marker)) {
+                marker.addTo(map);
+              }
+              visibleCount++;
+            } else {
+              if (map.hasLayer(marker)) {
+                marker.remove();
+              }
+            }
+          });
+          
+          // Update title with count
+          title.textContent = 'Total Students (' + visibleCount + ' visible)';
+        }
+        
+        // Bind filter to sliders
+        uaiSlider.addEventListener('input', filterMarkers);
+        totalSlider.addEventListener('input', filterMarkers);
+        
+        L.DomEvent.disableClickPropagation(div);
+        L.DomEvent.disableScrollPropagation(div);
+        
+        return div;
+      };
+      
+      map.addControl(controlPanel);
+    }
+  ")
+  
+  return(map)
+}
+```
+
+### 2. OpenStreetMap Base Layers and Custom Tiles
+
+```{r OSM_Base_Layers, message=FALSE, warning=FALSE}
+# Create comprehensive OpenStreetMap integration
+osm_comprehensive_map <- leaflet() %>%
+  # Add multiple OpenStreetMap tile layers
+  addProviderTiles(providers$OpenStreetMap, group = "OpenStreetMap Standard") %>%
+  addProviderTiles(providers$OpenStreetMap.DE, group = "OpenStreetMap DE") %>%
+  addProviderTiles(providers$OpenStreetMap.France, group = "OpenStreetMap France") %>%
+  addProviderTiles(providers$OpenStreetMap.HOT, group = "OpenStreetMap HOT") %>%
+  
+  # Add alternative base layers for comparison
+  addProviderTiles(providers$CartoDB.Positron, group = "CartoDB Light") %>%
+  addProviderTiles(providers$CartoDB.DarkMatter, group = "CartoDB Dark") %>%
+  addProviderTiles(providers$Esri.WorldStreetMap, group = "Esri Street") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Satellite") %>%
+  addProviderTiles(providers$CartoDB.Positron, group = "Stamen Toner") %>%
+  addProviderTiles(providers$CartoDB.Positron, group = "Stamen Terrain") %>%
+  
+  # Add fixed university markers (always visible) - one marker for each individual university
+  # UAI Group - Blue color (#0000FF)
+  addCircleMarkers(
+    lng = -70.518, lat = -33.486,  # UAI Santiago - Campus Peñalolén
+    radius = 12,
+    color = "#0000FF",
+    fillColor = "#0000FF",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #0000FF 0%, #2980b9 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ UAI</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad Adolfo Ibáñez<br>Campus Peñalolén</p></div></div>"
+  ) %>%
+  addCircleMarkers(
+    lng = -71.554162, lat = -33.011707,  # UAI Viña del Mar
+    radius = 12,
+    color = "#0000FF",
+    fillColor = "#0000FF",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #0000FF 0%, #2980b9 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ UAI</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad Adolfo Ibáñez<br>Campus Viña del Mar</p></div></div>"
+  ) %>%
+  # COMP1 Group - Green color (#00FF00)
+  addCircleMarkers(
+    lng = -70.6406, lat = -33.4411,  # PUC - 33°26′28″S 70°38′26″O
+    radius = 12,
+    color = "#00FF00",
+    fillColor = "#00FF00",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #00FF00 0%, #27ae60 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP1</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Pontificia Universidad Católica<br>Campus San Joaquín</p></div></div>"
+  ) %>%
+  addCircleMarkers(
+    lng = -70.6633, lat = -33.4575,  # U. de Chile - 33°27′27″S 70°39′48″O
+    radius = 12,
+    color = "#00FF00",
+    fillColor = "#00FF00",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #00FF00 0%, #27ae60 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP1</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad de Chile<br>Campus Beauchef</p></div></div>"
+  ) %>%
+  addCircleMarkers(
+    lng = -71.595, lat = -33.035,  # USM - 33°02′06″S 71°35′42″O
+    radius = 12,
+    color = "#00FF00",
+    fillColor = "#00FF00",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #00FF00 0%, #27ae60 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP1</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad Santa María<br>Valparaíso</p></div></div>"
+  ) %>%
+  addCircleMarkers(
+    lng = -71.6056, lat = -33.0447,  # PUCV - 33°02′41″S 71°36′20″O
+    radius = 12,
+    color = "#00FF00",
+    fillColor = "#00FF00",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #00FF00 0%, #27ae60 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP1</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Pontificia Universidad Católica de Valparaíso<br>Valparaíso</p></div></div>"
+  ) %>%
+  addCircleMarkers(
+    lng = -70.682766, lat = -33.448942,  # USACH - 33°26′56″S 70°40′58″O
+    radius = 12,
+    color = "#00FF00",
+    fillColor = "#00FF00",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #00FF00 0%, #27ae60 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP1</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad de Santiago de Chile<br>Campus Santiago</p></div></div>"
+  ) %>%
+  # COMP2 Group - Magenta color (#FF00FF)
+  addCircleMarkers(
+    lng = -70.5011, lat = -33.3917,  # UDD - 33°23′30″S 70°30′04″O
+    radius = 12,
+    color = "#FF00FF",
+    fillColor = "#FF00FF",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #FF00FF 0%, #9b59b6 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP2</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad del Desarrollo<br>Campus Las Condes</p></div></div>"
+  ) %>%
+  addCircleMarkers(
+    lng = -70.507468, lat = -33.404007,  # U. de los Andes - UANDES
+    radius = 12,
+    color = "#FF00FF",
+    fillColor = "#FF00FF",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #FF00FF 0%, #9b59b6 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP2</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad de los Andes<br>Campus San Carlos</p></div></div>"
+  ) %>%
+  addCircleMarkers(
+    lng = -71.5423, lat = -33.0337,  # UNAB - 33°02′01.4″S 71°32′32.1″O
+    radius = 12,
+    color = "#FF00FF",
+    fillColor = "#FF00FF",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #FF00FF 0%, #9b59b6 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP2</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad Andrés Bello<br>Campus Viña del Mar</p></div></div>"
+  ) %>%
+  
+  # Add competitive analysis layer - Enhanced with COMPT1 and inverse lift logic
+  addCircleMarkers(
+    data = datos_osm_clean,
+    lng = ~LONGITUD, lat = ~LATITUD,
+    color = ~case_when(
+      CLUSTER_UNIVERSIDAD == "OTHERS_COMP1_LOW" ~ "#FF0000",      # Rojo puro
+      CLUSTER_UNIVERSIDAD == "UAI" ~ "#0000FF",                   # Azul puro
+      CLUSTER_UNIVERSIDAD == "COMP1" ~ "#00FF00",                 # Verde puro
+      CLUSTER_UNIVERSIDAD == "COMP1_COMP2" ~ "#FF00FF",           # Magenta
+      CLUSTER_UNIVERSIDAD == "UAI2" ~ "#FFA500",                  # Naranja
+      CLUSTER_UNIVERSIDAD == "Others" ~ "#9B59B6",                # Púrpura
+      TRUE ~ "#2F2F2F"                                            # Gris muy oscuro
+    ),
+    stroke = TRUE, weight = 2, fillOpacity = 0.8,
+    radius = ~case_when(
+      MATRICULADOS >= 500 ~ 15,
+      MATRICULADOS >= 200 ~ 12,
+      MATRICULADOS >= 50 ~ 8,
+      TRUE ~ 5
+    ),
+    popup = ~paste("<div style='font-size: 12px; width: 320px;'>",
+                   "<div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px; border-radius: 8px 8px 0 0; margin: -10px -10px 10px -10px;'>",
+                   "<h3 style='margin: 0; font-size: 16px;'>", NOM_RBD, "</h3>",
+                   "</div>",
+                   "<div style='background: #f8f9fa; padding: 10px; border-radius: 0 0 8px 8px;'>",
+                   "<div style='display: flex; justify-content: space-between; margin-bottom: 10px;'>",
+                   "<span style='background: ", 
+                   case_when(
+                     CLUSTER_UNIVERSIDAD == "OTHERS_COMP1_LOW" ~ "#FF0000",      # Rojo puro
+                     CLUSTER_UNIVERSIDAD == "UAI" ~ "#0000FF",                   # Azul puro
+                     CLUSTER_UNIVERSIDAD == "COMP1" ~ "#00FF00",                 # Verde puro
+                     CLUSTER_UNIVERSIDAD == "COMP1_COMP2" ~ "#FF00FF",           # Magenta
+                     CLUSTER_UNIVERSIDAD == "UAI2" ~ "#FFA500",                  # Naranja
+                     CLUSTER_UNIVERSIDAD == "Others" ~ "#9B59B6",                # Púrpura
+                     TRUE ~ "#2F2F2F"                                            # Gris muy oscuro
+                   ), "; color: white; padding: 4px 8px; border-radius: 12px; font-size: 10px; font-weight: bold;'>", 
+                   ifelse(is.na(CLUSTER_UNIVERSIDAD) | CLUSTER_UNIVERSIDAD == "", "No Cluster", CLUSTER_UNIVERSIDAD), "</span>",
+                  "</div>",
+                  "<div style='display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;'>",
+                  "<div style='background: #e8f5e8; padding: 8px; border-radius: 6px; border-left: 4px solid #27ae60;'>",
+                  "<strong style='color: #27ae60; font-size: 11px;'>📚 UAI</strong><br>",
+                  "<div style='font-size: 10px; margin-top: 4px;'>",
+                  "<strong>Market Share:</strong> ", sprintf("%.1f%%", MARKET_SHARE_UAI_MATRI), "<br>",
+                  "<strong>Enrolled:</strong> ", MATRICULADOS_UAI, "<br>",
+                  "<strong>Applications:</strong> ", POSTULANTES_UAI,
+                  "</div></div>",
+                  "<div style='background: #fff3cd; padding: 8px; border-radius: 6px; border-left: 4px solid #f39c12;'>",
+                  "<strong style='color: #f39c12; font-size: 11px;'>🏛️ COMP1</strong><br>",
+                  "<div style='font-size: 10px; margin-top: 4px;'>",
+                  "<strong>Market Share:</strong> ", sprintf("%.1f%%", MARKET_SHARE_COMP1_MATRI), "<br>",
+                  "<strong>Enrolled:</strong> ", MATRI_COMPETENCIA1, "<br>",
+                  "<strong>Applications:</strong> ", POST_COMPETENCIA1,
+                  "</div></div>",
+                  "<div style='background: #f8d7da; padding: 8px; border-radius: 6px; border-left: 4px solid #e74c3c;'>",
+                  "<strong style='color: #e74c3c; font-size: 11px;'>🎓 COMP2</strong><br>",
+                  "<div style='font-size: 10px; margin-top: 4px;'>",
+                  "<strong>Market Share:</strong> ", sprintf("%.1f%%", MARKET_SHARE_COMP2_MATRI), "<br>",
+                  "<strong>Enrolled:</strong> ", MATRI_COMPETENCIA2, "<br>",
+                  "<strong>Applications:</strong> ", POST_COMPETENCIA2,
+                  "</div></div>",
+                  "<div style='background: #e3e3e3; padding: 8px; border-radius: 6px; border-left: 4px solid #7f8c8d;'>",
+                  "<strong style='color: #7f8c8d; font-size: 11px;'>🏫 OTHERS</strong><br>",
+                  "<div style='font-size: 10px; margin-top: 4px;'>",
+                  "<strong>Market Share:</strong> ", sprintf("%.1f%%", MARKET_SHARE_OTHERS_MATRI), "<br>",
+                  "<strong>Enrolled:</strong> ", MATRI_OTHERS, "<br>",
+                  "<strong>Applications:</strong> ", POST_OTHERS,
+                  "</div></div>",
+                  "</div>",
+                  "<div style='background: #f0f0f0; padding: 8px; border-radius: 4px; font-size: 11px;'>",
+                  "<strong>Academic Profile:</strong> ", CLUSTER_NOMBRE, "<br>",
+                  "<strong>Total Students:</strong> ", MATRICULADOS, " | <strong>Avg Score:</strong> ", {
+                    score_str <- as.character(PTJE_PROM)
+                    substr(score_str, 1, 3)
+                  },
+                  "</div>",
+                  "</div>",
+                  "</div>"),
+    group = "Competitive Analysis"
+  ) %>%
+  
+  # Add cluster visualization layer
+  addCircleMarkers(
+    data = datos_osm_clean,
+    lng = ~LONGITUD, lat = ~LATITUD,
+    color = ~case_when(
+      CLUSTER_NOMBRE == "Engineer" ~ "#e74c3c",
+      CLUSTER_NOMBRE == "Law" ~ "#f39c12",
+      CLUSTER_NOMBRE == "Balanced" ~ "#2ecc71",
+      CLUSTER_NOMBRE == "Journalism" ~ "#3498db",
+      CLUSTER_NOMBRE == "Commercial" ~ "#9b59b6",
+      CLUSTER_NOMBRE == "Psicology" ~ "#1abc9c",
+      TRUE ~ "#95a5a6"
+    ),
+    stroke = FALSE, fillOpacity = 0.7,
+    radius = 8,
+    popup = ~paste("<div style='font-size: 12px; width: 320px;'>",
+                   "<div style='background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 10px; border-radius: 8px 8px 0 0; margin: -10px -10px 10px -10px;'>",
+                   "<h3 style='margin: 0; font-size: 16px;'>", NOM_RBD, "</h3>",
+                   "</div>",
+                   "<div style='background: #f8f9fa; padding: 10px; border-radius: 0 0 8px 8px;'>",
+                   "<div style='display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px;'>",
+                   "<div style='background: #e8f5e8; padding: 8px; border-radius: 6px; border-left: 4px solid #27ae60;'>",
+                   "<strong style='color: #27ae60; font-size: 11px;'>UAI</strong><br>",
+                   "<div style='font-size: 10px; margin-top: 4px;'>",
+                   "<strong>Market Share:</strong><br>", sprintf("%.1f%%", MARKET_SHARE_UAI_MATRI), "<br>",
+                   "<strong>Enrolled:</strong><br>", MATRICULADOS_UAI, "<br>",
+                   "<strong>Applications:</strong><br>", POSTULANTES_UAI, "<br>",
+                   "<strong>Avg Score:</strong><br>", {
+                     score_str <- as.character(PTJE_PROM)
+                     # Show only first 3 digits for visualization
+                     substr(score_str, 1, 3)
+                   },
+                   "</div></div>",
+                   "<div style='background: #fff3cd; padding: 8px; border-radius: 6px; border-left: 4px solid #f39c12;'>",
+                   "<strong style='color: #f39c12; font-size: 11px;'>COMP1</strong><br>",
+                   "<div style='font-size: 10px; margin-top: 4px;'>",
+                   "<strong>Market Share:</strong><br>", sprintf("%.1f%%", MARKET_SHARE_COMP1_MATRI), "<br>",
+                   "<strong>Enrolled:</strong><br>", MATRI_COMPETENCIA_1, "<br>",
+                   "<strong>Applications:</strong><br>", POSTULANTES_COMPETENCIA_1, "<br>",
+                   "<strong>Lift vs UAI:</strong><br>", sprintf("%.2fx", LIFT_UAI_vs_COMP1), "<br>",
+                   "<strong>Avg Score:</strong><br>", {
+                     score_str <- as.character(PTJE_PROM)
+                     # Show only first 3 digits for visualization
+                     substr(score_str, 1, 3)
+                   },
+                   "</div></div>",
+                   "<div style='background: #f8d7da; padding: 8px; border-radius: 6px; border-left: 4px solid #e74c3c;'>",
+                   "<strong style='color: #e74c3c; font-size: 11px;'>COMP2</strong><br>",
+                   "<div style='font-size: 10px; margin-top: 4px;'>",
+                   "<strong>Market Share:</strong><br>", sprintf("%.1f%%", MARKET_SHARE_COMP2_MATRI), "<br>",
+                   "<strong>Enrolled:</strong><br>", MATRI_COMPETENCIA_2, "<br>",
+                   "<strong>Applications:</strong><br>", POSTULANTES_COMPETENCIA_2, "<br>",
+                   "<strong>Lift vs UAI:</strong><br>", sprintf("%.2fx", LIFT_UAI_vs_COMP2), "<br>",
+                   "<strong>Avg Score:</strong><br>", {
+                     score_str <- as.character(PTJE_PROM)
+                     # Show only first 3 digits for visualization
+                     substr(score_str, 1, 3)
+                   },
+                   "</div></div>",
+                   "<div style='background: #e3e3e3; padding: 8px; border-radius: 6px; border-left: 4px solid #7f8c8d;'>",
+                   "<strong style='color: #7f8c8d; font-size: 11px;'>OTHERS</strong><br>",
+                   "<div style='font-size: 10px; margin-top: 4px;'>",
+                   "<strong>Market Share:</strong><br>", sprintf("%.1f%%", MARKET_SHARE_OTHERS_MATRI), "<br>",
+                   "<strong>Enrolled:</strong><br>", MATRI_OTHERS, "<br>",
+                   "<strong>Applications:</strong><br>", POST_OTHERS,
+                   "</div></div>",
+                   "</div>",
+                   "<div style='background: #f0f0f0; padding: 8px; border-radius: 4px; font-size: 11px;'>",
+                  "<strong>Career Cluster:</strong> ", CLUSTER_NOMBRE, "<br>",
+                  "<strong>University Cluster:</strong> ", ifelse(is.na(CLUSTER_UNIVERSIDAD) | CLUSTER_UNIVERSIDAD == "", "N/A", CLUSTER_UNIVERSIDAD), "<br>",
+                   "<strong>Total Students:</strong> ", MATRICULADOS,
+                   "</div>",
+                   "</div>",
+                   "</div>"),
+    group = "School Clusters"
+  ) %>%
+  
+  # University markers removed - university clusters are now shown in school popups
+  # Universities are represented through CLUSTER_UNIVERSIDAD column in school data
+  
+  # Add legends
+  addLegend("bottomright", 
+            colors = c("#FF0000", "#0000FF", "#00FF00", "#FF00FF", "#FFA500", "#9B59B6", "#2F2F2F"),
+            labels = c("OTHERS_COMP1_LOW", "UAI", "COMP1", "COMP1_COMP2", "UAI2", "Others", "No Cluster"),
+            title = "University Cluster", 
+            opacity = 1, 
+            group = "Competitive Analysis") %>%
+  addLegend("bottomleft", 
+            colors = c("#e74c3c", "#f39c12", "#2ecc71", "#3498db", "#9b59b6", "#1abc9c"),
+            labels = c("Engineer", "Law", "Balanced", "Journalism", "Commercial", "Psicology"),
+            title = "School Clusters", 
+            opacity = 1, 
+            group = "School Clusters") %>%
+  
+  # Add layer control
+  addLayersControl(
+    baseGroups = c("OpenStreetMap Standard", "OpenStreetMap DE", "OpenStreetMap France", "OpenStreetMap HOT",
+                   "CartoDB Light", "CartoDB Dark", "Esri Street", "Satellite", "Stamen Toner", "Stamen Terrain"),
+    overlayGroups = c("Competitive Analysis", "School Clusters"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>%
+  
+  # Add custom search control and filter controls for CSV schools
+  htmlwidgets::onRender(., "
+    function(el, x) {
+      var map = this;
+      
+      // SIMPLE FILTER SYSTEM - Works on all maps
+      var allMarkers = [];
+      var totalSlider = null;
+      var title = null;
+      var maxTotal = 500;
+      
+      // Simple function to get Total Students from popup HTML
+      function getTotalStudents(marker) {
+        if (!marker || !marker.options || !marker.options.popup) return 0;
+        var popup = marker.options.popup;
+        var str = typeof popup === 'string' ? popup : (popup.toString ? popup.toString() : '');
+        if (!str) return 0;
+        // Find Total Students: followed by a number
+        var match = str.match(/Total Students[^:]*:\\s*([0-9,.]+)/);
+        if (!match) match = str.match(/Total Students[^0-9]*([0-9,.]+)/);
+        if (match && match[1]) {
+          var num = parseInt(match[1].toString().replace(/,/g, '').split('.')[0]) || 0;
+          return num;
+        }
+        return 0;
+      }
+      
+      // Simple marker collection - just get all circle markers
+      function collectAllMarkers() {
+        allMarkers = [];
+        map.eachLayer(function(layer) {
+          if (layer instanceof L.CircleMarker && layer.options && layer.options.popup) {
+            allMarkers.push(layer);
+            layer._totalStudents = getTotalStudents(layer);
+          }
+          if (layer instanceof L.LayerGroup) {
+            layer.eachLayer(function(subLayer) {
+              if (subLayer instanceof L.CircleMarker && subLayer.options && subLayer.options.popup) {
+                allMarkers.push(subLayer);
+                subLayer._totalStudents = getTotalStudents(subLayer);
+              }
+            });
+          }
+        });
+        // Calculate max
+        maxTotal = 0;
+        allMarkers.forEach(function(m) {
+          if (m._totalStudents > maxTotal) maxTotal = m._totalStudents;
+        });
+        maxTotal = Math.min(maxTotal || 500, 500);
+        console.log('Collected ' + allMarkers.length + ' markers, max total: ' + maxTotal);
+      }
+      
+      // Simple filter - just show/hide based on value
+      function applyFilter() {
+        if (!totalSlider || allMarkers.length === 0) return;
+        var minVal = parseInt(totalSlider.value) || 0;
+        var visible = 0;
+        
+        allMarkers.forEach(function(marker) {
+          var val = marker._totalStudents || getTotalStudents(marker);
+          var isOnMap = map.hasLayer(marker);
+          
+          if (minVal === 0 || val >= minVal) {
+            // Should be visible
+            if (!isOnMap) {
+              // Find the marker's layer group or add to map
+              var groupName = marker.options ? marker.options.group : null;
+              if (groupName) {
+                map.eachLayer(function(layer) {
+                  if (layer instanceof L.LayerGroup) {
+                    layer.eachLayer(function(l) {
+                      if (l instanceof L.CircleMarker && l.options && l.options.group === groupName) {
+                        marker.addTo(layer);
+                        return;
+                      }
+                    });
+                  }
+                });
+              }
+              if (!map.hasLayer(marker)) marker.addTo(map);
+            }
+            visible++;
+          } else {
+            // Should be hidden
+            if (isOnMap) marker.remove();
+          }
+        });
+        
+        if (title) title.textContent = 'Total Students (' + visible + ' visible)';
+        console.log('Filter applied: min=' + minVal + ', visible=' + visible);
+      }
+      
+      // Create filter control
+      var controlPanel = L.control({position: 'topright'});
+      controlPanel.onAdd = function(map) {
+        var div = L.DomUtil.create('div', 'filter-panel');
+        div.style.cssText = 'background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); min-width: 280px; z-index: 1000;';
+        
+        title = document.createElement('h4');
+        title.textContent = 'Total Students';
+        title.style.cssText = 'margin: 0 0 15px 0; font-size: 16px; color: #333;';
+        div.appendChild(title);
+        
+        var label = document.createElement('label');
+        label.textContent = 'Total Students (min):';
+        label.style.cssText = 'display: block; margin-bottom: 5px; font-size: 12px; font-weight: bold; color: #555;';
+        div.appendChild(label);
+        
+        totalSlider = document.createElement('input');
+        totalSlider.type = 'range';
+        totalSlider.min = '0';
+        totalSlider.max = String(maxTotal);
+        totalSlider.value = '0';
+        totalSlider.step = '10';
+        totalSlider.style.cssText = 'width: 100%; margin-bottom: 10px;';
+        div.appendChild(totalSlider);
+        
+        var valueSpan = document.createElement('span');
+        valueSpan.textContent = '0';
+        valueSpan.style.cssText = 'display: block; text-align: center; font-size: 14px; font-weight: bold; color: #667eea; margin-bottom: 10px;';
+        div.appendChild(valueSpan);
+        
+        totalSlider.addEventListener('input', function() {
+          valueSpan.textContent = this.value;
+          totalSlider.max = String(maxTotal); // Update max in case it changed
+          applyFilter();
+        });
+        
+        L.DomEvent.disableClickPropagation(div);
+        L.DomEvent.disableScrollPropagation(div);
+        return div;
+      };
+      map.addControl(controlPanel);
+      
+      // Collect markers and initialize
+      setTimeout(function() {
+        collectAllMarkers();
+        if (totalSlider) {
+          totalSlider.max = String(maxTotal);
+          applyFilter();
+        }
+      }, 500);
+      
+      setTimeout(function() {
+        collectAllMarkers();
+        if (totalSlider) {
+          totalSlider.max = String(maxTotal);
+          applyFilter();
+        }
+      }, 2000);
+      
+      map.on('layeradd', function() {
+        setTimeout(collectAllMarkers, 100);
+      });
+      
+      // Compatibility function (calls simple filter)
+      function applyFilters() {
+        applyFilter();
+      }
+      
+      // Create custom search control
+      var searchControl = L.control({position: 'topleft'});
+      
+      searchControl.onAdd = function(map) {
+        var div = L.DomUtil.create('div', 'custom-search-control');
+        div.style.cssText = 'background: white; padding: 5px; border-radius: 5px; box-shadow: 0 1px 5px rgba(0,0,0,0.4);';
+        
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Search schools by name...';
+        input.style.cssText = 'width: 200px; padding: 5px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px;';
+        div.appendChild(input);
+        
+        L.DomEvent.disableClickPropagation(div);
+        L.DomEvent.disableScrollPropagation(div);
+        
+        var schoolData = [];
+        map.eachLayer(function(layer) {
+          if (layer instanceof L.CircleMarker && layer.options.popup) {
+            var popupContent = layer.options.popup;
+            var schoolNameMatch = popupContent.match(/<h3[^>]*>([^<]+)<\\/h3>/);
+            if (schoolNameMatch) {
+              schoolData.push({
+                name: schoolNameMatch[1],
+                layer: layer,
+                latlng: layer.getLatLng()
+              });
+            }
+          }
+        });
+        
+        input.addEventListener('input', function(e) {
+          var query = e.target.value.toLowerCase();
+          if (query.length >= 2) {
+            var matches = schoolData.filter(function(school) {
+              return school.name.toLowerCase().includes(query);
+            });
+            
+            if (matches.length > 0) {
+              var match = matches[0];
+              map.setView(match.latlng, 15);
+              match.layer.openPopup();
+            }
+          }
+        });
+        
+        return div;
+      };
+      
+      map.addControl(searchControl);
+    }
+  ") %>%
+  
+  # Add advanced controls
+  addScaleBar(position = "bottomleft") %>%
+  addMeasure(position = "topleft") %>%
+  addFullscreenControl() %>%
+  addEasyButton(easyButton(
+    icon = "fa-crosshairs", title = "Locate Me",
+    onClick = JS("function(btn, map){ map.locate({setView: true}); }")
+  )) %>%
+  
+  # Set initial view
+  setView(lng = -71.5, lat = -35.0, zoom = 5)
+
+osm_comprehensive_map
+```
+
+### 3. Advanced OpenStreetMap Features - Heatmap Analysis
+
+```{r Advanced_OSM_Features, message=FALSE, warning=FALSE}
+# Create heatmap with 3 different views for UAI, COMP1, and COMP2
+osm_heatmap_features <- leaflet() %>%
+  # Add OpenStreetMap as primary base layer
+  addProviderTiles(providers$OpenStreetMap, group = "OpenStreetMap") %>%
+  addProviderTiles(providers$CartoDB.Positron, group = "CartoDB Light") %>%
+  addProviderTiles(providers$Esri.WorldImagery, group = "Satellite") %>%
+  
+  # UAI Heatmap - Blue gradient
+  addHeatmap(
+    data = datos_osm_clean %>% filter(MATRI_UAI_ACTUAL > 0),
+    lng = ~LONGITUD, lat = ~LATITUD,
+    intensity = ~MATRI_UAI_ACTUAL,
+    blur = 25, max = 0.1, radius = 20,
+    gradient = c("transparent", "lightblue", "blue", "darkblue", "navy"),
+    group = "UAI Heatmap"
+  ) %>%
+  
+  # COMP1 Heatmap - Orange/Red gradient
+  addHeatmap(
+    data = datos_osm_clean %>% filter(MATRI_COMP1_ACTUAL > 0),
+    lng = ~LONGITUD, lat = ~LATITUD,
+    intensity = ~MATRI_COMP1_ACTUAL,
+    blur = 25, max = 0.1, radius = 20,
+    gradient = c("transparent", "lightyellow", "orange", "red", "darkred"),
+    group = "COMP1 Heatmap"
+  ) %>%
+  
+  # COMP2 Heatmap - Green gradient
+  addHeatmap(
+    data = datos_osm_clean %>% filter(MATRI_COMP2_ACTUAL > 0),
+    lng = ~LONGITUD, lat = ~LATITUD,
+    intensity = ~MATRI_COMP2_ACTUAL,
+    blur = 25, max = 0.1, radius = 20,
+    gradient = c("transparent", "lightgreen", "green", "darkgreen", "forestgreen"),
+    group = "COMP2 Heatmap"
+  ) %>%
+  
+  # OTHERS Heatmap - Grey gradient
+  addHeatmap(
+    data = datos_osm_clean %>% filter(MATRI_OTHERS_ACTUAL > 0),
+    lng = ~LONGITUD, lat = ~LATITUD,
+    intensity = ~MATRI_OTHERS_ACTUAL,
+    blur = 25, max = 0.1, radius = 20,
+    gradient = c("transparent", "lightgrey", "grey", "darkgrey", "#5a5a5a"),
+    group = "OTHERS Heatmap"
+  ) %>%
+  
+  # Add fixed university markers (always visible) - same as first map
+  # UAI Group - Blue color (#0000FF)
+  addCircleMarkers(
+    lng = -70.518, lat = -33.486,  # UAI Santiago - Campus Peñalolén
+    radius = 12,
+    color = "#0000FF",
+    fillColor = "#0000FF",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #0000FF 0%, #2980b9 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ UAI</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad Adolfo Ibáñez<br>Campus Peñalolén</p></div></div>"
+  ) %>%
+  addCircleMarkers(
+    lng = -71.554162, lat = -33.011707,  # UAI Viña del Mar
+    radius = 12,
+    color = "#0000FF",
+    fillColor = "#0000FF",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #0000FF 0%, #2980b9 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ UAI</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad Adolfo Ibáñez<br>Campus Viña del Mar</p></div></div>"
+  ) %>%
+  # COMP1 Group - Green color (#00FF00)
+  addCircleMarkers(
+    lng = -70.6406, lat = -33.4411,  # PUC
+    radius = 12,
+    color = "#00FF00",
+    fillColor = "#00FF00",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #00FF00 0%, #27ae60 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP1</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Pontificia Universidad Católica<br>Campus San Joaquín</p></div></div>",
+  ) %>%
+  addCircleMarkers(
+    lng = -70.6633, lat = -33.4575,  # U. de Chile
+    radius = 12,
+    color = "#00FF00",
+    fillColor = "#00FF00",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #00FF00 0%, #27ae60 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP1</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad de Chile<br>Campus Beauchef</p></div></div>",
+  ) %>%
+  addCircleMarkers(
+    lng = -71.595, lat = -33.035,  # USM
+    radius = 12,
+    color = "#00FF00",
+    fillColor = "#00FF00",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #00FF00 0%, #27ae60 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP1</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad Santa María<br>Valparaíso</p></div></div>",
+  ) %>%
+  addCircleMarkers(
+    lng = -71.6056, lat = -33.0447,  # PUCV
+    radius = 12,
+    color = "#00FF00",
+    fillColor = "#00FF00",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #00FF00 0%, #27ae60 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP1</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Pontificia Universidad Católica de Valparaíso<br>Valparaíso</p></div></div>",
+  ) %>%
+  addCircleMarkers(
+    lng = -70.682766, lat = -33.448942,  # USACH
+    radius = 12,
+    color = "#00FF00",
+    fillColor = "#00FF00",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #00FF00 0%, #27ae60 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP1</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad de Santiago de Chile<br>Campus Santiago</p></div></div>",
+  ) %>%
+  # COMP2 Group - Magenta color (#FF00FF)
+  addCircleMarkers(
+    lng = -70.5011, lat = -33.3917,  # UDD
+    radius = 12,
+    color = "#FF00FF",
+    fillColor = "#FF00FF",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #FF00FF 0%, #9b59b6 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP2</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad del Desarrollo<br>Campus Las Condes</p></div></div>",
+  ) %>%
+  addCircleMarkers(
+    lng = -70.507468, lat = -33.404007,  # U. de los Andes
+    radius = 12,
+    color = "#FF00FF",
+    fillColor = "#FF00FF",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #FF00FF 0%, #9b59b6 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP2</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad de los Andes<br>Campus San Carlos</p></div></div>",
+  ) %>%
+  addCircleMarkers(
+    lng = -71.5423, lat = -33.0337,  # UNAB
+    radius = 12,
+    color = "#FF00FF",
+    fillColor = "#FF00FF",
+    fillOpacity = 1,
+    weight = 3,
+    stroke = TRUE,
+    popup = "<div style='font-size: 14px; width: 250px;'><div style='background: linear-gradient(135deg, #FF00FF 0%, #9b59b6 100%); color: white; padding: 12px; border-radius: 8px;'><h3 style='margin: 0; font-size: 18px;'>🏛️ COMP2</h3><p style='margin: 5px 0 0 0; font-size: 12px; opacity: 0.9;'>Universidad Andrés Bello<br>Campus Viña del Mar</p></div></div>",
+  ) %>%
+  
+  # Add circle markers to show individual schools
+  addCircleMarkers(
+    data = datos_osm_clean %>% filter(MATRI_UAI_ACTUAL > 0),
+    lng = ~LONGITUD, lat = ~LATITUD,
+    color = "#3498db", stroke = TRUE, weight = 2, fillOpacity = 0.8,
+    radius = ~sqrt(MATRI_UAI_ACTUAL) * 2 + 5,
+    popup = ~paste("<div style='font-size: 12px; width: 280px;'>",
+                   "<div style='background: linear-gradient(135deg, #3498db 0%, #2980b9 100%); color: white; padding: 8px; border-radius: 6px 6px 0 0; margin: -10px -10px 8px -10px;'>",
+                   "<h4 style='margin: 0; font-size: 14px;'>", NOM_RBD, "</h4>",
+                   "</div>",
+                  "<div style='background: #f8f9fa; padding: 8px; border-radius: 0 0 6px 6px;'>",
+                  "<div style='display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 8px;'>",
+                  "<div style='background: #e3f2fd; padding: 6px; border-radius: 4px; border-left: 3px solid #3498db;'>",
+                  "<strong style='color: #2980b9; font-size: 10px;'>UAI</strong><br>",
+                  "<div style='font-size: 9px; margin-top: 3px;'>",
+                  "<strong>Market Share:</strong><br>", sprintf("%.1f%%", MARKET_SHARE_UAI_MATRI), "<br>",
+                  "<strong>Enrolled:</strong><br>", MATRI_UAI_ACTUAL, "<br>",
+                  "<strong>Applications:</strong><br>", POST_UAI_ACTUAL,
+                  "</div></div>",
+                  "<div style='background: #fff3e0; padding: 6px; border-radius: 4px; border-left: 3px solid #ff9800;'>",
+                  "<strong style='color: #f57c00; font-size: 10px;'>COMP1</strong><br>",
+                  "<div style='font-size: 9px; margin-top: 3px;'>",
+                  "<strong>Market Share:</strong><br>", sprintf("%.1f%%", MARKET_SHARE_COMP1_MATRI), "<br>",
+                  "<strong>Enrolled:</strong><br>", MATRI_COMP1_ACTUAL, "<br>",
+                  "<strong>Applications:</strong><br>", POST_COMP1_ACTUAL,
+                  "</div></div>",
+                  "<div style='background: #e8f5e8; padding: 6px; border-radius: 4px; border-left: 3px solid #4caf50;'>",
+                  "<strong style='color: #388e3c; font-size: 10px;'>COMP2</strong><br>",
+                  "<div style='font-size: 9px; margin-top: 3px;'>",
+                  "<strong>Market Share:</strong><br>", sprintf("%.1f%%", MARKET_SHARE_COMP2_MATRI), "<br>",
+                  "<strong>Enrolled:</strong><br>", MATRI_COMP2_ACTUAL, "<br>",
+                  "<strong>Applications:</strong><br>", POST_COMP2_ACTUAL,
+                  "</div></div>",
+                  "<div style='background: #e3e3e3; padding: 6px; border-radius: 4px; border-left: 3px solid #7f8c8d;'>",
+                  "<strong style='color: #7f8c8d; font-size: 10px;'>🏫 OTHERS</strong><br>",
+                  "<div style='font-size: 9px; margin-top: 3px;'>",
+                  "<strong>Market Share:</strong><br>", sprintf("%.1f%%", MARKET_SHARE_OTHERS_MATRI), "<br>",
+                  "<strong>Enrolled:</strong><br>", MATRI_OTHERS_ACTUAL, "<br>",
+                  "<strong>Applications:</strong><br>", POST_OTHERS_ACTUAL,
+                  "</div></div>",
+                  "</div>",
+                   "<div style='background: #f0f0f0; padding: 6px; border-radius: 4px; font-size: 10px;'>",
+                   "<strong>Total Students:</strong> ", MATRICULADOS, " | <strong>Avg Score:</strong> ", sprintf("%.2f", round(as.numeric(gsub(",", ".", PTJE_PROM)) / 1000000000000, 2)) %>% gsub("\\.", ",", .),
+                   "</div>",
+                   "</div>",
+                   "</div>"),
+    group = "School Markers"
+  ) %>%
+  
+  # Add legends for each heatmap
+  addLegend("bottomright", 
+            colors = c("navy", "darkblue", "blue", "lightblue", "transparent"),
+            labels = c("High", "Medium-High", "Medium", "Low", "None"),
+            title = "UAI Enrollment Intensity", 
+            opacity = 1, 
+            group = "UAI Heatmap") %>%
+  
+  addLegend("bottomleft", 
+            colors = c("darkred", "red", "orange", "lightyellow", "transparent"),
+            labels = c("High", "Medium-High", "Medium", "Low", "None"),
+            title = "COMP1 Enrollment Intensity", 
+            opacity = 1, 
+            group = "COMP1 Heatmap") %>%
+  
+  addLegend("topright", 
+            colors = c("forestgreen", "darkgreen", "green", "lightgreen", "transparent"),
+            labels = c("High", "Medium-High", "Medium", "Low", "None"),
+            title = "COMP2 Enrollment Intensity", 
+            opacity = 1, 
+            group = "COMP2 Heatmap") %>%
+  
+  addLegend("topleft", 
+            colors = c("#5a5a5a", "darkgrey", "grey", "lightgrey", "transparent"),
+            labels = c("High", "Medium-High", "Medium", "Low", "None"),
+            title = "OTHERS Enrollment Intensity", 
+            opacity = 1, 
+            group = "OTHERS Heatmap") %>%
+  
+  # Add layer control
+  addLayersControl(
+    baseGroups = c("OpenStreetMap", "CartoDB Light", "Satellite"),
+    overlayGroups = c("UAI Heatmap", "COMP1 Heatmap", "COMP2 Heatmap", "OTHERS Heatmap", "School Markers"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) %>%
+  
+  # Add advanced controls
+  addScaleBar(position = "bottomleft") %>%
+  addMeasure(position = "topleft") %>%
+  addFullscreenControl() %>%
+  addEasyButton(easyButton(
+    icon = "fa-home", title = "Reset View",
+    onClick = JS("function(btn, map){ map.setView([-35.0, -71.5], 5); }")
+  )) %>%
+  
+  # Set initial view
+  setView(lng = -71.5, lat = -35.0, zoom = 5) %>%
+  
+  # Add custom search control and filter controls for CSV schools
+  htmlwidgets::onRender(., "
+    function(el, x) {
+      var map = this;
+      
+      // SIMPLE FILTER SYSTEM - Works on all maps
+      var allMarkers = [];
+      var totalSlider = null;
+      var title = null;
+      var maxTotal = 500;
+      
+      // Simple function to get Total Students from popup HTML
+      function getTotalStudents(marker) {
+        if (!marker || !marker.options || !marker.options.popup) return 0;
+        var popup = marker.options.popup;
+        var str = typeof popup === 'string' ? popup : (popup.toString ? popup.toString() : '');
+        if (!str) return 0;
+        var match = str.match(/Total Students[^:]*:\\s*([0-9,.]+)/);
+        if (!match) match = str.match(/Total Students[^0-9]*([0-9,.]+)/);
+        if (match && match[1]) {
+          var num = parseInt(match[1].toString().replace(/,/g, '').split('.')[0]) || 0;
+          return num;
+        }
+        return 0;
+      }
+      
+      // Simple marker collection
+      function collectAllMarkers() {
+        allMarkers = [];
+        map.eachLayer(function(layer) {
+          if (layer instanceof L.CircleMarker && layer.options && layer.options.popup) {
+            allMarkers.push(layer);
+            layer._totalStudents = getTotalStudents(layer);
+          }
+          if (layer instanceof L.LayerGroup) {
+            layer.eachLayer(function(subLayer) {
+              if (subLayer instanceof L.CircleMarker && subLayer.options && subLayer.options.popup) {
+                allMarkers.push(subLayer);
+                subLayer._totalStudents = getTotalStudents(subLayer);
+              }
+            });
+          }
+        });
+        maxTotal = 0;
+        allMarkers.forEach(function(m) {
+          if (m._totalStudents > maxTotal) maxTotal = m._totalStudents;
+        });
+        maxTotal = Math.min(maxTotal || 500, 500);
+      }
+      
+      // Simple filter
+      function applyFilter() {
+        if (!totalSlider || allMarkers.length === 0) return;
+        var minVal = parseInt(totalSlider.value) || 0;
+        var visible = 0;
+        allMarkers.forEach(function(marker) {
+          var val = marker._totalStudents || getTotalStudents(marker);
+          var isOnMap = map.hasLayer(marker);
+          if (minVal === 0 || val >= minVal) {
+            if (!isOnMap) {
+              var groupName = marker.options ? marker.options.group : null;
+              if (groupName) {
+                map.eachLayer(function(layer) {
+                  if (layer instanceof L.LayerGroup) {
+                    layer.eachLayer(function(l) {
+                      if (l instanceof L.CircleMarker && l.options && l.options.group === groupName) {
+                        marker.addTo(layer);
+                        return;
+                      }
+                    });
+                  }
+                });
+              }
+              if (!map.hasLayer(marker)) marker.addTo(map);
+            }
+            visible++;
+          } else {
+            if (isOnMap) marker.remove();
+          }
+        });
+        if (title) title.textContent = 'Total Students (' + visible + ' visible)';
+      }
+      
+      // Create filter control
+      var controlPanel = L.control({position: 'topright'});
+      controlPanel.onAdd = function(map) {
+        var div = L.DomUtil.create('div', 'filter-panel');
+        div.style.cssText = 'background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); min-width: 280px; z-index: 1000;';
+        title = document.createElement('h4');
+        title.textContent = 'Total Students';
+        title.style.cssText = 'margin: 0 0 15px 0; font-size: 16px; color: #333;';
+        div.appendChild(title);
+        var label = document.createElement('label');
+        label.textContent = 'Total Students (min):';
+        label.style.cssText = 'display: block; margin-bottom: 5px; font-size: 12px; font-weight: bold; color: #555;';
+        div.appendChild(label);
+        totalSlider = document.createElement('input');
+        totalSlider.type = 'range';
+        totalSlider.min = '0';
+        totalSlider.max = String(maxTotal);
+        totalSlider.value = '0';
+        totalSlider.step = '10';
+        totalSlider.style.cssText = 'width: 100%; margin-bottom: 10px;';
+        div.appendChild(totalSlider);
+        var valueSpan = document.createElement('span');
+        valueSpan.textContent = '0';
+        valueSpan.style.cssText = 'display: block; text-align: center; font-size: 14px; font-weight: bold; color: #667eea; margin-bottom: 10px;';
+        div.appendChild(valueSpan);
+        totalSlider.addEventListener('input', function() {
+          valueSpan.textContent = this.value;
+          totalSlider.max = String(maxTotal);
+          applyFilter();
+        });
+        L.DomEvent.disableClickPropagation(div);
+        L.DomEvent.disableScrollPropagation(div);
+        return div;
+      };
+      map.addControl(controlPanel);
+      
+      setTimeout(function() {
+        collectAllMarkers();
+        if (totalSlider) {
+          totalSlider.max = String(maxTotal);
+          applyFilter();
+        }
+      }, 500);
+      setTimeout(function() {
+        collectAllMarkers();
+        if (totalSlider) {
+          totalSlider.max = String(maxTotal);
+          applyFilter();
+        }
+      }, 2000);
+      map.on('layeradd', function() {
+        setTimeout(collectAllMarkers, 100);
+      });
+      
+      // Create custom search control
+      var searchControl = L.control({position: 'topleft'});
+      
+      searchControl.onAdd = function(map) {
+        var div = L.DomUtil.create('div', 'custom-search-control');
+        div.style.cssText = 'background: white; padding: 5px; border-radius: 5px; box-shadow: 0 1px 5px rgba(0,0,0,0.4);';
+        
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Search schools by name...';
+        input.style.cssText = 'width: 200px; padding: 5px; border: 1px solid #ccc; border-radius: 3px; font-size: 12px;';
+        div.appendChild(input);
+        
+        L.DomEvent.disableClickPropagation(div);
+        L.DomEvent.disableScrollPropagation(div);
+        
+        // Get school data from markers
+        var schoolData = [];
+        map.eachLayer(function(layer) {
+          if (layer instanceof L.CircleMarker && layer.options.popup) {
+            var popupContent = layer.options.popup;
+            var schoolNameMatch = popupContent.match(/<h4[^>]*>([^<]+)<\\/h4>/);
+            if (schoolNameMatch) {
+              schoolData.push({
+                name: schoolNameMatch[1],
+                layer: layer,
+                latlng: layer.getLatLng()
+              });
+            }
+          }
+        });
+        
+        input.addEventListener('input', function(e) {
+          var query = e.target.value.toLowerCase();
+          if (query.length >= 2) {
+            var matches = schoolData.filter(function(school) {
+              return school.name.toLowerCase().includes(query);
+            });
+            
+            if (matches.length > 0) {
+              var match = matches[0];
+              map.setView(match.latlng, 15);
+              match.layer.openPopup();
+            }
+          }
+        });
+        
+        return div;
+      };
+      
+      map.addControl(searchControl);
+    }
+  ")
+
+osm_heatmap_features
+```
+
+### Interactive Schools Table with Filters
+
+```{r Schools_Table, message=FALSE, warning=FALSE, echo=FALSE}
+# Prepare data for interactive table
+# Use datos (original, unfiltered) and calculate needed columns
+schools_table_data <- datos %>%
+  mutate(
+    # Calculate market share if not already calculated
+    TOTAL_MARKET_MATRI = coalesce(as.numeric(MATRICULADOS_UAI), 0) + 
+                         coalesce(as.numeric(MATRI_COMPETENCIA1), 0) + 
+                         coalesce(as.numeric(MATRI_COMPETENCIA2), 0) + 
+                         coalesce(as.numeric(MATRI_OTHERS), 0),
+    MARKET_SHARE_UAI_MATRI = if_else(TOTAL_MARKET_MATRI > 0, 
+                                     (coalesce(as.numeric(MATRICULADOS_UAI), 0) / TOTAL_MARKET_MATRI) * 100, 0),
+    MARKET_SHARE_COMP1_MATRI = if_else(TOTAL_MARKET_MATRI > 0, 
+                                       (coalesce(as.numeric(MATRI_COMPETENCIA1), 0) / TOTAL_MARKET_MATRI) * 100, 0),
+    MARKET_SHARE_COMP2_MATRI = if_else(TOTAL_MARKET_MATRI > 0, 
+                                       (coalesce(as.numeric(MATRI_COMPETENCIA2), 0) / TOTAL_MARKET_MATRI) * 100, 0),
+    MARKET_SHARE_OTHERS_MATRI = if_else(TOTAL_MARKET_MATRI > 0, 
+                                        (coalesce(as.numeric(MATRI_OTHERS), 0) / TOTAL_MARKET_MATRI) * 100, 0)
+  ) %>%
+  mutate(
+    # Ensure CLUSTER_UNIVERSIDAD is preserved as character with full names
+    CLUSTER_UNIVERSIDAD = as.character(CLUSTER_UNIVERSIDAD)
+  ) %>%
+  select(
+    School = NOM_RBD,
+    Region = REGION_RBD,
+    Total_Students = MATRICULADOS,
+    Average_Score = PTJE_PROM,
+    Career_Cluster = CLUSTER_CARRERA,
+    University_Cluster = CLUSTER_UNIVERSIDAD,
+    Matriculated_UAI = MATRICULADOS_UAI,
+    Matriculated_COMP1 = MATRI_COMPETENCIA1,
+    Matriculated_COMP2 = MATRI_COMPETENCIA2,
+    Matriculated_Others = MATRI_OTHERS,
+    Market_Share_UAI = MARKET_SHARE_UAI_MATRI,
+    Market_Share_COMP1 = MARKET_SHARE_COMP1_MATRI,
+    Market_Share_COMP2 = MARKET_SHARE_COMP2_MATRI,
+    Market_Share_Others = MARKET_SHARE_OTHERS_MATRI
+  ) %>%
+  mutate(
+    Total_Students = as.numeric(Total_Students),
+    Average_Score = as.numeric(Average_Score),
+    Matriculated_UAI = as.numeric(Matriculated_UAI),
+    Matriculated_COMP1 = as.numeric(Matriculated_COMP1),
+    Matriculated_COMP2 = as.numeric(Matriculated_COMP2),
+    Matriculated_Others = as.numeric(Matriculated_Others),
+    Market_Share_UAI = as.numeric(Market_Share_UAI),
+    Market_Share_COMP1 = as.numeric(Market_Share_COMP1),
+    Market_Share_COMP2 = as.numeric(Market_Share_COMP2),
+    Market_Share_Others = as.numeric(Market_Share_Others),
+    Career_Cluster = ifelse(is.na(Career_Cluster) | Career_Cluster == "" | trimws(as.character(Career_Cluster)) == "", 
+                           "Low_Volume", 
+                           trimws(as.character(Career_Cluster))),
+    # Preserve full cluster names exactly as they appear in CSV - no truncation
+    # Replace empty values with "Low_Volume"
+    # Ensure no leading/trailing spaces that could cause character loss
+    University_Cluster = case_when(
+      is.na(University_Cluster) ~ "Low_Volume",
+      as.character(University_Cluster) == "" ~ "Low_Volume",
+      trimws(as.character(University_Cluster)) == "" ~ "Low_Volume",
+      TRUE ~ paste0(trimws(as.character(University_Cluster)))  # Ensure full name with no spaces
+    ),
+    Region = as.character(Region),
+    # Replace NA with 0 for numeric columns to ensure filters work
+    Total_Students = ifelse(is.na(Total_Students), 0, Total_Students),
+    Average_Score = ifelse(is.na(Average_Score), 0, Average_Score),
+    Matriculated_UAI = ifelse(is.na(Matriculated_UAI), 0, Matriculated_UAI),
+    Matriculated_COMP1 = ifelse(is.na(Matriculated_COMP1), 0, Matriculated_COMP1),
+    Matriculated_COMP2 = ifelse(is.na(Matriculated_COMP2), 0, Matriculated_COMP2),
+    Matriculated_Others = ifelse(is.na(Matriculated_Others), 0, Matriculated_Others),
+    Market_Share_UAI = ifelse(is.na(Market_Share_UAI), 0, Market_Share_UAI),
+    Market_Share_COMP1 = ifelse(is.na(Market_Share_COMP1), 0, Market_Share_COMP1),
+    Market_Share_COMP2 = ifelse(is.na(Market_Share_COMP2), 0, Market_Share_COMP2),
+    Market_Share_Others = ifelse(is.na(Market_Share_Others), 0, Market_Share_Others)
+  ) %>%
+  arrange(School)
+
+# Create interactive DataTable with improved numeric filtering
+DT::datatable(
+  schools_table_data,
+  filter = "top",
+  options = list(
+    pageLength = 25,
+    lengthMenu = c(10, 25, 50, 100, 200, 500, nrow(schools_table_data)),
+    scrollX = TRUE,
+    scrollY = "600px",
+    autoWidth = FALSE,
+    searchHighlight = TRUE,
+    # Ensure all columns are searchable and filterable
+    searchCols = NULL,
+    columnDefs = list(
+      list(width = "200px", targets = 0, searchable = TRUE),  # School name
+      list(width = "100px", targets = 1, searchable = TRUE),  # Region
+      list(width = "120px", targets = 2, searchable = TRUE, type = "num"),  # Total Students
+      list(width = "120px", targets = 3, searchable = TRUE, type = "num"),  # Average Score
+      list(width = "150px", targets = 4, searchable = TRUE),  # Career Cluster
+      list(width = "220px", targets = 5, searchable = TRUE),  # University Cluster - wide for full names
+      list(width = "120px", targets = c(6, 7, 8, 9), searchable = TRUE, type = "num"),  # Matriculated columns
+      list(width = "130px", targets = c(10, 11, 12, 13), searchable = TRUE, type = "num"),  # Market Share columns
+      list(className = "dt-center", targets = c(2, 3, 6, 7, 8, 9, 10, 11, 12, 13))  # Center numeric columns
+    ),
+    language = list(
+      search = "Search all columns:",
+      lengthMenu = "Show _MENU_ schools per page",
+      info = "Showing _START_ to _END_ of _TOTAL_ schools",
+      infoEmpty = "No schools found",
+      infoFiltered = "(filtered from _MAX_ total schools)",
+      zeroRecords = "No matching schools found"
+    ),
+    dom = "Bfrtip",
+    buttons = list(
+      list(extend = "copy", title = "Schools Data"),
+      list(extend = "csv", title = "Schools Data", filename = "schools_data"),
+      list(extend = "excel", title = "Schools Data", filename = "schools_data"),
+      list(extend = "pdf", title = "Schools Data", filename = "schools_data"),
+      list(extend = "print", title = "Schools Data")
+    ),
+    initComplete = DT::JS("
+      function(settings, json) {
+        var table = this.api();
+        var numericColumns = [2, 3, 6, 7, 8, 9, 10, 11, 12, 13];
+        var tableId = settings.nTable.id;
+        
+        numericColumns.forEach(function(colIdx) {
+          var input = $(settings.nTHead).find('input').eq(colIdx);
+          if (!input.length) return;
+          
+          input.attr('placeholder', 'Min value');
+          
+          input.off('keyup search input').on('keyup search input', function() {
+            var val = this.value.trim();
+            var searchId = 'minFilter_' + colIdx + '_' + tableId;
+            
+            $.fn.dataTable.ext.search = $.fn.dataTable.ext.search.filter(function(fn) {
+              return !fn[searchId];
+            });
+            
+            if (!val || val === '') {
+              table.column(colIdx).search('', true, false).draw();
+              return;
+            }
+            
+            var minVal = parseFloat(val.replace(',', '.'));
+            if (isNaN(minVal)) {
+              table.column(colIdx).search(val, true, false).draw();
+                        return;
+            }
+            
+            var minFilter = function(settings, data, dataIndex) {
+              if (!settings || !settings.nTable || !settings.nTable.id) return true;
+              if (settings.nTable.id !== tableId) return true;
+              var cellValue = parseFloat((data[colIdx] || '').toString().replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
+              return cellValue >= minVal;
+            };
+            
+            minFilter[searchId] = true;
+            $.fn.dataTable.ext.search.push(minFilter);
+            table.draw();
+          });
+        });
+      }
+    ")
+  ),
+  extensions = c("Buttons", "Scroller", "FixedHeader"),
+  rownames = FALSE,
+  class = "display nowrap compact",
+  style = "bootstrap4"
+) %>%
+  DT::formatRound(columns = c("Average_Score"), digits = 1) %>%
+  DT::formatRound(columns = c("Total_Students", "Matriculated_UAI", "Matriculated_COMP1", 
+                               "Matriculated_COMP2", "Matriculated_Others"), digits = 0) %>%
+  DT::formatRound(columns = c("Market_Share_UAI", "Market_Share_COMP1", "Market_Share_COMP2", 
+                               "Market_Share_Others"), digits = 2) %>%
+  DT::formatStyle(
+    columns = c("Career_Cluster", "University_Cluster"),
+    backgroundColor = DT::styleEqual(
+      levels = c("Engineer", "Law", "Balanced", "Journalism", "Commercial", "Psicology",
+                 "UAI", "COMP1", "COMP2", "COMP1_COMP2", "UAI2", "Others", "OTHERS_COMP1_LOW", "Low_Volume"),
+      values = c("#e74c3c", "#f39c12", "#2ecc71", "#3498db", "#9b59b6", "#1abc9c",
+                 "#0000FF", "#00FF00", "#FF00FF", "#FF00FF", "#FFA500", "#9B59B6", "#FF0000", "#95a5a6")
+    ),
+    color = "white",
+    fontWeight = "bold"
+  )
+```
+
+**Table Features:**
+- **Search**: Use the search box at top right to search across all columns
+- **Column Filters**: 
+  - **Region, Career Cluster, University Cluster**: Type text to filter by specific values
+  - **Numeric columns** (Total Students, Average Score, Matriculated, Market Share): Type a number to show only rows where that column is **greater than or equal** to your value (minimum filter)
+- **Sorting**: Click column headers to sort ascending/descending
+- **Pagination**: Navigate through pages using controls at bottom
+- **Export**: Use buttons to export data to CSV, Excel, PDF, or print
+- **Scroll**: Scroll horizontally and vertically to see all columns
+```
