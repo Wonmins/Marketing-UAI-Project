@@ -1,5 +1,10 @@
 ---
-title: "OpenStreetMap Integration: Actual Enrollment Analysis"
+title: "UAI Competitive Intelligence Dashboard - OpenStreetMap Integration"
+subtitle: "Interactive Web Mapping and Data Visualization for Enrollment Analysis"
+description: |
+  Comprehensive interactive dashboard integrating OpenStreetMap with enrollment data 
+  for competitive analysis. Features real-time filtering, geographic visualization, 
+  and advanced data tables for UAI market intelligence.
 format:
   html:
     embed-resources: true
@@ -81,16 +86,16 @@ table.kable-table tbody tr:last-child td {
 
 </style>
 
-### OpenStreetMap Integration for Competitive Analysis - Actual Enrollment Data
+## Competitive Intelligence Dashboard with OpenStreetMap Integration
 
-This document focuses specifically on OpenStreetMap integration and advanced web mapping techniques for UAI's competitive analysis using actual enrollment data (MATRICULADOS, EGRESADOS) without filtered career restrictions.
+This interactive dashboard provides a comprehensive analysis of UAI's competitive positioning in the Chilean education market. The visualization integrates real-time enrollment data (matriculated students and graduates) with advanced web mapping capabilities using OpenStreetMap, enabling strategic insights through geographic and data-driven exploration.
 
-**OpenStreetMap Features:**
-- 🗺️ **Custom OpenStreetMap Tiles** with multiple providers
-- 🌐 **Advanced Leaflet Integration** with custom controls
-- 📊 **Real-time Data Overlays** on OpenStreetMap base layers
-- 🎯 **Professional Web Mapping** with responsive design
-- 📱 **Mobile-optimized Maps** with touch interactions
+**Key Features:**
+- 🗺️ **Interactive Geographic Visualization**: OpenStreetMap integration with multiple tile providers and custom controls for detailed school location analysis
+- 📊 **Real-time Data Overlays**: Dynamic mapping of enrollment metrics, market share, and competitive positioning directly on geographic layers
+- 🔍 **Advanced Filtering & Search**: Multi-dimensional filtering by region, career cluster, university cluster, and enrollment metrics
+- 📱 **Responsive Design**: Mobile-optimized interface with touch interactions for on-the-go analysis
+- 📈 **Comprehensive Data Tables**: Interactive tables with export capabilities (CSV, Excel, PDF) and advanced search functionality
 
 ```{r setup, include=FALSE, message=FALSE, warning=FALSE}
 # Load specialized mapping libraries
