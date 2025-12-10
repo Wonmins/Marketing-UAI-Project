@@ -30,10 +30,6 @@ install.packages(c("tidyverse", "leaflet", "leaflet.extras", "leaflet.providers"
 # Visita: https://quarto.org/docs/get-started/
 ```
 
-##LINKS
-https://demre.cl/portales/datos-abiertos/datos-abiertos-matricula
-https://datosabiertos.mineduc.cl/
-
 ---
 
 ## 📁 Estructura del Repositorio
@@ -69,27 +65,32 @@ https://datosabiertos.mineduc.cl/
 
 **Objetivo:** construir una base consolidada de colegios por año académico.
 
-### Entradas (en `CSV/`):
+### 📥 Obtención de Datos Fuente
 
-1. `ArchivoD_AdmYYYY.csv`: postulaciones
-2. `ArchivoMatr_AdmYYYY.csv`: matrículas
-3. `ArchivoB_AdmYYYY.csv`: inscritos con datos socioeconómicos
-4. `directorio.csv`: metadatos de colegios (RBD, nombres, regiones)
-5. `Libro_CódigosADMYYYY_ArchivoD.csv`: catálogo oficial de carreras y universidades
-6. `career_mapping_categoria_detalle.csv`: mapping manual de carreras estratégicas
-7. `colegios_coordenadas_completas.csv` *(opcional)*: geocodificación por RBD
+Los archivos CSV fuente deben obtenerse de los siguientes portales oficiales:
+
+- **DEMRE (Datos Abiertos):** [https://demre.cl/portales/datos-abiertos/datos-abiertos-matricula](https://demre.cl/portales/datos-abiertos/datos-abiertos-matricula)
+- **Ministerio de Educación (Datos Abiertos):** [https://datosabiertos.mineduc.cl/](https://datosabiertos.mineduc.cl/)
+
+### Entradas (CSVs fuente en `CSV/`):
+
+1. `ArchivoD_AdmYYYY.csv`: postulaciones (fuente: DEMRE)
+2. `ArchivoMatr_AdmYYYY.csv`: matrículas (fuente: DEMRE)
+3. `ArchivoB_AdmYYYY.csv`: inscritos con datos socioeconómicos (fuente: DEMRE)
+4. `directorio.csv`: metadatos de colegios (RBD, nombres, regiones) (fuente: MINEDUC)
+5. `Libro_CódigosADMYYYY_ArchivoD.csv`: catálogo oficial de carreras y universidades (fuente: DEMRE)
+6. `career_mapping_categoria_detalle.csv`: mapping manual de carreras estratégicas (incluido en el repositorio)
+7. `colegios_coordenadas_completas.csv` *(opcional)*: coordenadas geográficas por RBD
 
 ### Procesos principales:
-- Limpieza y normalización de carreras (regex, ASCII, upper)
+- Limpieza y normalización de carreras
 - Homologación de competidores (UAI/Competidor 1/Competidor 2)
-- Agregaciones por colegio: postulantes, matriculados, market share filtrado, distribución GSE, métricas por carrera
-- Identificación de multi-sedes (`SEDE_ID`, `NOM_SEDE`)
-- Merge con coordenadas y direcciones
+- Agregaciones por colegio: postulantes, matriculados, market share, distribución GSE, métricas por carrera
+- Identificación de multi-sedes
+- Merge con coordenadas geográficas
 
 ### Resultados (en `CSV/`):
-- `RESUMEN_COLEGIOS_YYYY.csv` – base maestra por sede
-- `RESUMEN_COLEGIOS_CON_COORDENADAS_YYYY.csv` – incluye lat/lon/dirección
-- `RESUMEN_UAI_DETALLADO_POR_CARRERA_YYYY.csv` – detalle por carrera vs competidores
+- `RESUMEN_COLEGIOS_YYYY.csv` – base consolidada por sede (entrada para Paso 2)
 
 ---
 
@@ -102,45 +103,14 @@ https://datosabiertos.mineduc.cl/
 
 ### Procesos principales:
 - K-means sobre preferencias de matrícula por carrera (6 clusters)
-- Recalculo de market shares, lifts y segmentación competitiva (UAI/COMP1/COMP2/Oportunidad/Bajo volumen)
-- Fallback a postulaciones cuando la matrícula es <10; etiqueta `BAJO_VOLUMEN` si no hay datos suficientes
-- Histogramas sin barra 0 (cero contado en títulos) + cortes sugeridos mediante k-means 1D
-- Tramos de market share/lift en incrementos de 0.1
-- Rankings para Región Metropolitana (top sedes por segmento y por cluster de carrera)
-- Exportación de múltiples CSV e imágenes
+- Clustering de universidades (6 clusters)
+- Cálculo de market shares y lifts
+- Segmentación competitiva (UAI/COMP1/COMP2/OTHERS)
+- Fallback a postulaciones cuando la matrícula es <10
+- Generación de visualizaciones y reportes auxiliares
 
-### Resultados CSV (en `CSV/`):
-| Archivo | Descripción |
-| --- | --- |
-| `Resumen_colegios_clusters.csv` | Dataset maestro con clustering, segmentación, market share, lift, ubicación (para visualización) |
-| `CLUSTER_YYYY_WITH_NAMES_AND_LOCATIONS.csv` | Dataset maestro con clustering y segmentación |
-| `segmento_distribucion.csv` | Conteo y % de colegios por segmento competitivo |
-| `segmento_resumen_detallado.csv` | Market share, lift y métricas agregadas por segmento |
-| `segmento_composicion_carreras.csv` | Composición de carreras dominantes por segmento competitivo |
-| `cluster_matricula_competidores.csv` | Totales de matrícula UAI/COMP1/COMP2/Otros por cluster |
-| `cluster_matricula_por_carrera.csv` | Matriculados por cluster, carrera y competidor |
-| `cluster_matricula_totales_por_carrera.csv` | Totales de matrícula por cluster y carrera |
-| `cluster_carrera_porcentajes.csv` | % de cada carrera dentro de cada cluster |
-| `market_share_kmeans_thresholds.csv` | Cortes sugeridos (centros k-means 1D) para market share (>0) |
-| `lift_kmeans_thresholds.csv` | Cortes sugeridos para lift (>0) |
-| `market_share_tramos.csv` | Conteo y % de colegios por tramos de 0.1 en market share, incluyendo "0 exacto" |
-| `lift_tramos.csv` | Conteo y % por tramos de 0.1 en lift |
-| `santiago_top_competencia.csv` | Top 10 sedes de Santiago (Región Metropolitana) por segmento competitivo |
-| `santiago_top_carreras.csv` | Top 10 sedes de Santiago por cluster de carrera |
-
-### Resultados gráficos (PNG):
-| Imagen | Descripción |
-| --- | --- |
-| `segmento_composicion_carreras.png` | Stacked bars: composición de carreras por segmento competitivo |
-| `segmento_conteos_carreras.png` | Barras por carrera y segmento (conteo) |
-| `segmento_distribucion_clusters.png` | Distribución de clusters de carrera por segmento competitivo |
-| `cluster_matricula_competidores.png` | Matrícula total por cluster y competidor (UAI/Competidores/Otros) |
-| `cluster_matricula_carreras.png` | Matrícula por cluster y carrera, desglosada por competidor |
-| `cluster_carrera_porcentajes.png` | % de carreras dentro de cada cluster |
-| `hist_market_share_competidores.png` | Histogramas de market share >0 por competidor. Títulos incluyen cantidad de `0 exacto` |
-| `hist_lift_competencias.png` | Histogramas de lift >0; títulos muestran recuento de `0 exacto` |
-| `market_share_tramos.png` | Barras comparativas por deciles de market share (0.1) |
-| `lift_tramos.png` | Barras comparativas por tramos de 0.1 del lift |
+### Resultados (en `CSV/`):
+- `Resumen_colegios_clusters.csv` – **Archivo principal**: dataset maestro con clustering, segmentación, market share, lift y ubicación (usado por la visualización)
 
 ---
 
@@ -193,15 +163,18 @@ Esto generará un nuevo archivo `openstreetmap_integration.html` con todas las a
 
 1. **Mapping de carreras:** revisar y mantener actualizado `CSV/career_mapping_categoria_detalle.csv`. Cualquier cambio impacta ambos pipelines.
 
-2. **Coordenadas:** si faltan lat/lon en `CSV/colegios_coordenadas_completas.csv`, el pipeline continúa pero deja columnas vacías.
+2. **Coordenadas:** el archivo `CSV/colegios_coordenadas_completas.csv` es opcional. Si no existe, el pipeline continúa pero deja columnas de coordenadas vacías.
 
-3. **Datos faltantes:** sedes con <10 matrículas totales caen en `BAJO_VOLUMEN`. Si hay ≥15 postulaciones, se usa fallback con market share de postulaciones.
+3. **Datos faltantes:** sedes con <10 matrículas totales se etiquetan como `BAJO_VOLUMEN`. Si hay ≥15 postulaciones, se usa fallback con market share de postulaciones.
 
-4. **Market share = 0:** se contabiliza por separado y aparece en los títulos de los histogramas ("n0=…").
+4. **Archivo final:** `Resumen_colegios_clusters.csv` es el único archivo necesario para la visualización. Los demás CSV generados son auxiliares para análisis específicos.
 
-5. **Extensibilidad:** los scripts están modularizados para agregar nuevos competidores, carreras o gráficos si es necesario.
-
-6. **Rutas:** todos los scripts asumen que se ejecutan desde la raíz del proyecto. Los archivos de entrada deben estar en `CSV/` y las salidas también se generarán en `CSV/`.
+5. **Rutas:** ejecuta los scripts desde la raíz del proyecto. Todos los CSVs (fuentes y resultados) deben estar en `CSV/`.
 
 ---
 
+## 6. Contacto / Issues
+
+Para preguntas o ajustes adicionales (ej. nuevos cortes, dashboard, filtros regionales), respaldar la última salida y ajustar directamente en los scripts. Mantener comentarios actualizados ayuda a facilitar la colaboración entre analistas y data scientists.
+
+¡Feliz análisis!
